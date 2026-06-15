@@ -26,10 +26,11 @@ def build_agent(config: dict[str, Any] | None = None) -> Agent:
     TODO (M1): instancien su agente y llamen a `agent.register_tool(...)`
     por cada una de sus herramientas antes de devolverlo.
     """
-    config = config or {}
-    llm = config.get("llm_client") or LLMClient.from_env()
 
-    kwargs: dict[str, Any] = {"llm_client": llm}
+    config = config or {} #NO CAMBIAR
+    llm = config.get("llm_client") or LLMClient.from_env() #NO CAMBIAR
+    kwargs: dict[str, Any] = {"llm_client": llm} #NO CAMBIAR
+    
     if "max_history_messages" in config:
         kwargs["max_history_messages"] = config["max_history_messages"]
 
@@ -39,8 +40,4 @@ def build_agent(config: dict[str, Any] | None = None) -> Agent:
     # from student_framework.tools.example import reverse_string, reverse_string_schema
     # agent.register_tool(reverse_string, reverse_string_schema)
 
-    # TODO (M1): registren calculadora, lector de archivos y herramienta libre.
-    # agent.register_tool(calculator, calculator_schema)
-    # agent.register_tool(file_reader, file_reader_schema)
-    # agent.register_tool(my_free_tool, my_free_tool_schema)
     return agent

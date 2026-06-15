@@ -1,7 +1,7 @@
 """Añadan aquí sus tres herramientas obligatorias (M1).
 
   1. **Calculadora simple** — dos operandos numéricos y operador +, -, *, %.
-  2. **Lector de archivos** — ruta → contenido de archivo de texto (acceso acotado).
+  2. **Lector de archivos** — ruta → contenido de archivo de texto.
   3. **Herramienta libre** — la que quieran.
 
 Cada herramienta debe ser un callable que acepte argumentos por palabra clave
