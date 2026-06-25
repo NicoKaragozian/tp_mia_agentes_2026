@@ -30,3 +30,9 @@ def reverse_string(
 
 
 reverse_string_schema = ToolSchema.from_callable(reverse_string)
+
+# Línea de la convención de auto-descubrimiento: cada módulo de tool expone
+# TOOLS = [(fn, schema)]. `example` está excluido del REGISTRY (ver
+# tools/__init__.py:_EXCLUDE), así que esta línea NO registra la tool; está
+# para que al copiar este archivo como plantilla ya traigan la línea correcta.
+TOOLS = [(reverse_string, reverse_string_schema)]

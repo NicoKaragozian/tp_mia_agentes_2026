@@ -36,8 +36,12 @@ def build_agent(config: dict[str, Any] | None = None) -> Agent:
 
     agent = MyAgent(**kwargs)
 
-    # Ejemplo de registro (elimínenlo cuando sus herramientas estén listas):
-    # from student_framework.tools.example import reverse_string, reverse_string_schema
-    # agent.register_tool(reverse_string, reverse_string_schema)
+    # Registro por auto-descubrimiento: cada módulo en `tools/` que exponga
+    # `TOOLS = [(fn, schema)]` se recolecta en `REGISTRY`. Agregar una tool
+    # NO requiere tocar este archivo (ver student_framework/tools/__init__.py).
+    from student_framework.tools import REGISTRY
+
+    for tool, schema in REGISTRY:
+        agent.register_tool(tool, schema)
 
     return agent
