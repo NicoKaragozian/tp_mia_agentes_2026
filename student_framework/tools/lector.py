@@ -70,15 +70,16 @@ def leer_archivo(
         return f"Error: {ruta!r} no es un archivo regular."
 
     try:
+        # Chequear el tamaño con stat() ANTES de leer: así un archivo enorme
+        # no se carga entero a memoria solo para rechazarlo después.
+        if objetivo.stat().st_size > _MAX_BYTES:
+            return (
+                f"Error: el archivo {ruta!r} supera el límite de "
+                f"{_MAX_BYTES} bytes."
+            )
         datos = objetivo.read_bytes()
     except OSError as exc:
         return f"Error de E/S al leer {ruta!r}: {exc}."
-
-    if len(datos) > _MAX_BYTES:
-        return (
-            f"Error: el archivo {ruta!r} supera el límite de "
-            f"{_MAX_BYTES} bytes."
-        )
 
     try:
         return datos.decode("utf-8")

@@ -17,6 +17,7 @@ from student_framework.tools.calculadora import (
 )
 from student_framework.tools.lector import (
     _BASE_DIR,
+    _MAX_BYTES,
     leer_archivo,
     leer_archivo_schema,
 )
@@ -131,6 +132,18 @@ def test_lector_archivo_no_utf8() -> None:
     try:
         out = leer_archivo(nombre)
         assert "utf-8" in out.lower()
+    finally:
+        ruta.unlink(missing_ok=True)
+
+
+def test_lector_archivo_supera_limite() -> None:
+    _BASE_DIR.mkdir(parents=True, exist_ok=True)
+    nombre = f"_big_{uuid.uuid4().hex}.txt"
+    ruta = _BASE_DIR / nombre
+    ruta.write_bytes(b"a" * (_MAX_BYTES + 1))
+    try:
+        out = leer_archivo(nombre)
+        assert "límite" in out.lower()
     finally:
         ruta.unlink(missing_ok=True)
 
