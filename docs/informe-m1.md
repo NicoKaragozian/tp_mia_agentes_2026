@@ -4,9 +4,9 @@ Framework mínimo de agentes (sin LangChain/LangGraph). Este informe cubre los
 cuatro puntos pedidos: (1) diagrama de arquitectura, (2) diseño de la interfaz
 de herramientas, (3) terminación del bucle, (4) limitaciones conocidas.
 
-Mapa de autoría: núcleo del agente (`agent.py`) → Nicolás; herramientas
-(`tools/`) → Valentino (calculadora, lector) y Federico (word_counter +
-integración).
+Mapa de autoría: núcleo del agente (`student_framework/agent.py`) → Nicolás;
+herramientas (`student_framework/tools/`) → Valentino (calculadora, lector) y
+Federico (word_counter + integración).
 
 ---
 
@@ -22,7 +22,7 @@ integración).
                        │  2) registra cada (fn, schema) del REGISTRY auto-descubierto
                        ▼
         ┌───────────────────────────────────────────────────┐
-        │                     MyAgent                         │   [agent.py]
+        │                     MyAgent                         │   [student_framework/agent.py]
         │                                                     │
         │   estado:  _tools   : name → callable               │
         │            _schemas : name → ToolSchema             │
@@ -37,7 +37,7 @@ integración).
    │   .chat(messages, tools, │        │   calculadora / leer_archivo│
    │         system) →        │        │   / word_counter  (fn->str) │
    │        LLMResponse       │        └────────────────────────────┘
-   │                          │            [tools/*.py]
+   │                          │            [student_framework/tools/*.py]
    │  impl. FIJA:             │
    │   Ollama / Bedrock /     │
    │   MockLLMClient (tests)  │   [mia_agents/llm_client.py — FIJO]
@@ -111,8 +111,9 @@ mano**:
 Las tools **no conocen** el bucle ni el formato interno de `messages`: por eso
 se testean solas (`tests/test_tools.py`).
 
-**Registro por auto-descubrimiento.** Cada módulo de `tools/` expone
-`TOOLS = [(fn, schema)]`; `tools/__init__.py` recolecta todos en `REGISTRY`
+**Registro por auto-descubrimiento.** Cada módulo de `student_framework/tools/`
+expone `TOOLS = [(fn, schema)]`; `student_framework/tools/__init__.py` recolecta
+todos en `REGISTRY`
 (orden determinista por nombre de módulo, fail-fast ante `TOOLS` malformado o
 nombres duplicados). `build_agent` registra todo lo que haya en `REGISTRY`, así
 **agregar una tool = crear su módulo**, sin tocar `build_agent` ni el archivo
