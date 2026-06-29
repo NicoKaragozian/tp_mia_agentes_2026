@@ -11,10 +11,11 @@ Los tests de conformidad en `tests/conformance/test_m1.py` y
 
 from __future__ import annotations
 
+import json
 from typing import Any, Callable
 
 from mia_agents.protocols import LLMClient
-from mia_agents.types import AgentResult, ToolSchema
+from mia_agents.types import AgentResult, AgentStep, LLMResponse, ToolCall, ToolSchema
 
 
 class MyAgent:
@@ -48,8 +49,12 @@ class MyAgent:
         self._system = system_prompt
         self._max_iterations = max_iterations
         self._max_history_messages = max_history_messages
-        # TODO (M1): inicializa el estado interno para las herramientas registradas.
-        # TODO (M2): inicializa la estructura de historial conversacional.
+        # Estado de las herramientas registradas. Indexamos por el nombre
+        # del esquema para que, al ejecutar un tool_call, podamos buscar el
+        # callable por `tool_call.name` y para que `AgentStep.tool_name`
+        # coincida exactamente con `schema.name`.
+        self._tools: dict[str, Callable[..., str]] = {}
+        self._schemas: dict[str, ToolSchema] = {}
 
     def register_tool(
         self,
@@ -65,7 +70,8 @@ class MyAgent:
         El callable se invoca con kwargs que coinciden con la firma.
         Debe devolver una cadena.
         """
-        raise NotImplementedError("M1: implementa el registro de herramientas")
+        self._tools[schema.name] = tool
+        self._schemas[schema.name] = schema
 
     def run(self, user_message: str) -> AgentResult:
         """Ejecuta el bucle del agente hasta una respuesta final o hasta max_iterations.
@@ -91,7 +97,98 @@ class MyAgent:
         `LLMResponse` y exponlos en `AgentResult.input_tokens` /
         `AgentResult.output_tokens`.
         """
-        raise NotImplementedError("M1: implementa el bucle del agente")
+        # Historial local de esta llamada a `run` (en M1 no hay estado
+        # persistente entre llamadas). Arranca con el mensaje del usuario.
+        messages: list[dict[str, Any]] = [{"role": "user", "content": user_message}]
+        steps: list[AgentStep] = []
+
+        # El `for` (en vez de `while True`) es nuestra garantía de no tener
+        # bucles infinitos: como mucho hacemos `max_iterations` llamadas al LLM.
+        for _ in range(self._max_iterations):
+            response = self._llm.chat(
+                messages=messages,
+                # Sin tools registradas pasamos None; el contrato exige que,
+                # si hay tools, su nombre aparezca en la lista enviada.
+                tools=list(self._schemas.values()) or None,
+                system=self._system,
+            )
+
+            # Condición de parada de M1: texto sin tool_calls => respuesta final.
+            if not response.tool_calls:
+                return AgentResult(answer=response.content or "", steps=steps)
+
+            # El LLM pidió herramientas. Registramos su turno (con los
+            # tool_calls) y luego ejecutamos cada una.
+            messages.append(self._assistant_turn(response))
+            for call in response.tool_calls:
+                output, error = self._dispatch(call)
+                steps.append(
+                    AgentStep(
+                        tool_name=call.name,
+                        tool_input=call.arguments,
+                        tool_output=output,
+                        error=error,
+                    )
+                )
+                # Realimentamos el resultado (o el error) al LLM como un
+                # mensaje `role: "tool"` antes de volver a llamar a `chat`.
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": call.id,
+                        "content": output if error is None else error,
+                    }
+                )
+
+        # Se agotó `max_iterations` sin una respuesta de texto final. Aun así
+        # devolvemos un `AgentResult` válido, con `error` indicando el corte.
+        return AgentResult(
+            answer="",
+            steps=steps,
+            error=f"Se alcanzó el máximo de iteraciones ({self._max_iterations}).",
+        )
+
+    def _dispatch(self, call: ToolCall) -> tuple[str | None, str | None]:
+        """Ejecuta un único `tool_call`. Devuelve `(output, error)` y nunca lanza.
+
+        - Tool desconocida (alucinada por el LLM) => `(None, mensaje)`.
+        - `arguments` con JSON inválido => `(None, mensaje)`.
+        - La tool lanza una excepción (p. ej. división por cero) => `(None, mensaje)`.
+        - Éxito => `(resultado_str, None)`.
+        """
+        tool = self._tools.get(call.name)
+        if tool is None:
+            return None, f"Herramienta desconocida: {call.name!r}."
+
+        try:
+            kwargs = json.loads(call.arguments) if call.arguments else {}
+        except json.JSONDecodeError as exc:
+            return None, f"Argumentos JSON inválidos para {call.name!r}: {exc}."
+
+        try:
+            return tool(**kwargs), None
+        except Exception as exc:  # noqa: BLE001 — una tool puede fallar; no rompemos el bucle.
+            return None, f"Error al ejecutar {call.name!r}: {exc}."
+
+    @staticmethod
+    def _assistant_turn(response: LLMResponse) -> dict[str, Any]:
+        """Arma el turno del assistant con sus tool_calls.
+
+        Usa el formato que los providers fijos (Ollama y Bedrock) saben
+        normalizar. Este formato es interno al bucle: las tools no lo ven,
+        así que no acopla la implementación de las herramientas.
+        """
+        return {
+            "role": "assistant",
+            "content": response.content or "",
+            "tool_calls": [
+                {
+                    "id": tc.id,
+                    "function": {"name": tc.name, "arguments": tc.arguments},
+                }
+                for tc in response.tool_calls
+            ],
+        }
 
     def structured_call(
         self,
