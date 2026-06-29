@@ -23,8 +23,8 @@ def test_escenario_dos_herramientas():
         LLMResponse(
             content=None,
             tool_calls=[
-                ToolCall(id="c1", name="calculator",
-                         arguments=json.dumps({"a": 10, "b": 5, "operator": "+"})),
+                ToolCall(id="c1", name="calculadora",
+                         arguments=json.dumps({"operando_a": 10, "operando_b": 5, "operador": "+"})),
             ],
         ),
         # Turno 2: el LLM decide contar palabras de una frase
@@ -49,7 +49,7 @@ def test_escenario_dos_herramientas():
     assert len(result.steps) == 2
 
     # Primer paso: la calculadora devolvió 15
-    assert result.steps[0].tool_name == "calculator"
+    assert result.steps[0].tool_name == "calculadora"
     assert result.steps[0].tool_output == "15"
     assert result.steps[0].error is None
 
