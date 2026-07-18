@@ -20,13 +20,78 @@ describen con precisión los comportamientos exigidos.
 from __future__ import annotations
 
 import json
-from typing import Any, Callable
+import time
+from typing import Any, Callable, TypeVar
 
 from pydantic import ValidationError
 
 from mia_agents.protocols import LLMClient
 from mia_agents.tool_schema import FINAL_RESULT_TOOL_NAME, final_result_tool_schema
 from mia_agents.types import AgentResult, AgentStep, LLMResponse, ToolCall, ToolSchema
+
+_T = TypeVar("_T")
+
+#: Códigos HTTP que se consideran transitorios: timeout del servidor,
+#: rate limit y familia 5xx (el resto de 4xx es culpa del request: no
+#: tiene sentido repetirlo igual).
+_ESTADOS_TRANSITORIOS = frozenset({408, 429, 500, 502, 503, 504})
+
+#: Fragmentos de nombre de clase / código de error de proveedor que
+#: delatan un fallo transitorio (ThrottlingException, ReadTimeout, ...).
+_MARCAS_TRANSITORIAS = (
+    "timeout",
+    "throttl",
+    "ratelimit",
+    "rate_limit",
+    "serviceunavailable",
+    "connection",
+    "temporar",
+)
+
+
+def _codigo_http(exc: Exception) -> int | None:
+    """Extrae un código de estado HTTP del objeto excepción, si lo trae.
+
+    Duck-typing deliberado: el agente está programado contra el protocolo
+    `chat(...)` y no importa los SDKs de los proveedores, pero sus
+    excepciones suelen cargar el estado como `status_code` (ollama,
+    httpx), `status`, o dentro de `response` (requests / botocore).
+    """
+    for attr in ("status_code", "status"):
+        valor = getattr(exc, attr, None)
+        if isinstance(valor, int):
+            return valor
+    respuesta = getattr(exc, "response", None)
+    valor = getattr(respuesta, "status_code", None)
+    if isinstance(valor, int):
+        return valor
+    if isinstance(respuesta, dict):  # estilo botocore: response["ResponseMetadata"]
+        valor = (respuesta.get("ResponseMetadata") or {}).get("HTTPStatusCode")
+        if isinstance(valor, int):
+            return valor
+    return None
+
+
+def _es_error_transitorio(exc: Exception) -> bool:
+    """True si reintentar tiene sentido (red, timeout, 5xx, rate limit).
+
+    Un error de programación (TypeError, ValueError, ...) devuelve False:
+    reintentarlo solo escondería el bug. Ante la duda, False — mejor
+    propagar limpio que reintentar a ciegas.
+    """
+    if isinstance(exc, (TimeoutError, ConnectionError)):
+        return True
+    codigo = _codigo_http(exc)
+    if codigo is not None:
+        return codigo in _ESTADOS_TRANSITORIOS
+    # Código de error simbólico estilo botocore: response["Error"]["Code"].
+    respuesta = getattr(exc, "response", None)
+    if isinstance(respuesta, dict):
+        simbolo = str((respuesta.get("Error") or {}).get("Code", "")).lower()
+        if any(marca in simbolo for marca in _MARCAS_TRANSITORIAS):
+            return True
+    nombre = type(exc).__name__.lower()
+    return any(marca in nombre for marca in _MARCAS_TRANSITORIAS)
 
 
 class SalidaEstructuradaError(RuntimeError):
@@ -46,6 +111,8 @@ class MyAgent:
         system_prompt: str = "Eres un asistente útil.",
         max_iterations: int = 10,
         max_history_messages: int = 50,
+        max_retries: int = 2,
+        retry_base_delay: float = 0.2,
     ) -> None:
         """Inicializa el agente.
 
@@ -62,11 +129,21 @@ class MyAgent:
             longitud de lo pasado a `self._llm.chat(...)` no supera este
             número en ninguna llamada (ver `_ventana`), sin importar
             cuántos turnos acumule la conversación.
+        max_retries : int
+            Reintentos automáticos ante fallos transitorios (además del
+            intento inicial), tanto para el cliente LLM como para las
+            herramientas. Ver `_con_reintentos`.
+        retry_base_delay : float
+            Espera base (segundos) del backoff exponencial entre
+            reintentos: base, 2*base, 4*base, ... Con 0 no se duerme
+            (útil en tests).
         """
         self._llm = llm_client
         self._system = system_prompt
         self._max_iterations = max_iterations
         self._max_history_messages = max_history_messages
+        self._max_retries = max_retries
+        self._retry_base_delay = retry_base_delay
         # Memoria de la conversación (M2). Historial completo y persistente
         # entre llamadas a `run`: acá se escribe TODO (turnos de usuario,
         # del assistant y resultados de tools). Lo que se envía al LLM en
@@ -131,12 +208,14 @@ class MyAgent:
         # El `for` (en vez de `while True`) es nuestra garantía de no tener
         # bucles infinitos: como mucho hacemos `max_iterations` llamadas al LLM.
         for _ in range(self._max_iterations):
-            response = self._llm.chat(
-                messages=self._ventana(),
-                # Sin tools registradas pasamos None; el contrato exige que,
-                # si hay tools, su nombre aparezca en la lista enviada.
-                tools=list(self._schemas.values()) or None,
-                system=self._system,
+            response = self._con_reintentos(
+                lambda: self._llm.chat(
+                    messages=self._ventana(),
+                    # Sin tools registradas pasamos None; el contrato exige
+                    # que, si hay tools, su nombre aparezca en la lista.
+                    tools=list(self._schemas.values()) or None,
+                    system=self._system,
+                )
             )
             if response.input_tokens is not None or response.output_tokens is not None:
                 alguien_reporto = True
@@ -252,6 +331,31 @@ class MyAgent:
             cola = cola[1:]
         return [historia[i_ultimo_user]] + cola
 
+    def _con_reintentos(self, operacion: Callable[[], _T]) -> _T:
+        """Ejecuta `operacion` reintentando los fallos transitorios.
+
+        Política (enunciado: "resiliencia"):
+          - transitorio (ver `_es_error_transitorio`) => hasta
+            `max_retries` reintentos con backoff exponencial;
+          - no transitorio => se propaga limpio, sin reintentar (repetir
+            un bug no lo arregla);
+          - transitorio agotado => se propaga la última excepción.
+
+        Envuelve tanto las llamadas al cliente LLM como la ejecución de
+        herramientas; quién atrapa lo que se propaga depende del llamador
+        (el LLM no tiene plan B; una tool cae al camino de `AgentStep.error`).
+        """
+        intento = 0
+        while True:
+            try:
+                return operacion()
+            except Exception as exc:  # noqa: BLE001 — clasificamos y decidimos.
+                if intento >= self._max_retries or not _es_error_transitorio(exc):
+                    raise
+                if self._retry_base_delay > 0:
+                    time.sleep(self._retry_base_delay * (2**intento))
+                intento += 1
+
     def _dispatch(self, call: ToolCall) -> tuple[str | None, str | None]:
         """Ejecuta un único `tool_call`. Devuelve `(output, error)` y nunca lanza.
 
@@ -259,6 +363,12 @@ class MyAgent:
         - `arguments` con JSON inválido => `(None, mensaje)`.
         - La tool lanza una excepción (p. ej. división por cero) => `(None, mensaje)`.
         - Éxito => `(resultado_str, None)`.
+
+        Los fallos transitorios de la tool (red, timeouts) se reintentan
+        vía `_con_reintentos`; si aun así fallan, o el error no era
+        transitorio, el mensaje termina en `AgentStep.error` y se
+        realimenta al LLM como observación — el error vuelve al loop, no
+        lo rompe.
         """
         tool = self._tools.get(call.name)
         if tool is None:
@@ -270,7 +380,7 @@ class MyAgent:
             return None, f"Argumentos JSON inválidos para {call.name!r}: {exc}."
 
         try:
-            return tool(**kwargs), None
+            return self._con_reintentos(lambda: tool(**kwargs)), None
         except Exception as exc:  # noqa: BLE001 — una tool puede fallar; no rompemos el bucle.
             return None, f"Error al ejecutar {call.name!r}: {exc}."
 
@@ -334,10 +444,12 @@ class MyAgent:
         detalle_final = "el modelo no produjo una salida válida"
 
         for _ in range(1 + max_repair_attempts):
-            response = self._llm.chat(
-                messages=self._ventana(trabajo),
-                tools=[tool_de_cierre],
-                system=self._system,
+            response = self._con_reintentos(
+                lambda: self._llm.chat(
+                    messages=self._ventana(trabajo),
+                    tools=[tool_de_cierre],
+                    system=self._system,
+                )
             )
 
             # Caso 1: texto libre, sin tool_calls => pedir el formato.

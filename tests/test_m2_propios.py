@@ -14,16 +14,17 @@ Como en el resto de la suite, todo corre con `MockLLMClient` (sin API).
 from __future__ import annotations
 
 import json
+from typing import Annotated
 
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from mia_agents.testing import MockLLMClient, make_recording_tool
 from mia_agents.tool_schema import FINAL_RESULT_TOOL_NAME
-from mia_agents.types import LLMResponse, ToolCall
+from mia_agents.types import LLMResponse, ToolCall, ToolSchema
 
 from student_framework import build_agent
-from student_framework.agent import SalidaEstructuradaError
+from student_framework.agent import SalidaEstructuradaError, _es_error_transitorio
 
 
 class Respuesta(BaseModel):
@@ -310,6 +311,114 @@ def test_structured_call_fallido_no_toca_el_historial():
     payload = str(mock.calls[-1]["messages"])
     assert "dame un objeto" not in payload
     assert "seguimos" in payload
+
+
+# ---------------------------------------------------------------------------
+# Resiliencia: reintentos ante fallos transitorios
+# ---------------------------------------------------------------------------
+
+
+def test_timeout_del_llm_se_reintenta_y_el_run_termina_bien():
+    """Criterio del enunciado: un timeout simulado se reintenta solo."""
+    mock = MockLLMClient([TimeoutError("se colgó"), LLMResponse(content="ok")])
+    agent = build_agent({"llm_client": mock, "retry_base_delay": 0})
+
+    result = agent.run("hola")
+
+    assert result.answer == "ok"
+    assert mock.call_count == 2, "el timeout debió consumir un reintento"
+
+
+def test_error_no_transitorio_del_llm_propaga_sin_reintentar():
+    """Un bug (ValueError) no se reintenta: se propaga limpio al llamador."""
+    mock = MockLLMClient([ValueError("request mal armado"), LLMResponse(content="x")])
+    agent = build_agent({"llm_client": mock, "retry_base_delay": 0})
+
+    with pytest.raises(ValueError):
+        agent.run("hola")
+    assert mock.call_count == 1
+
+
+def test_transitorio_agotado_propaga_la_ultima_excepcion():
+    """max_retries acota el optimismo: agotados, la excepción sale."""
+    mock = MockLLMClient(
+        [TimeoutError("1"), TimeoutError("2"), TimeoutError("3"), TimeoutError("4")]
+    )
+    agent = build_agent(
+        {"llm_client": mock, "retry_base_delay": 0, "max_retries": 2}
+    )
+
+    with pytest.raises(TimeoutError):
+        agent.run("hola")
+    assert mock.call_count == 3, "1 intento inicial + 2 reintentos"
+
+
+def test_tool_con_fallo_transitorio_se_reintenta():
+    """Una tool que falla por red una vez termina ejecutándose bien."""
+    intentos = {"n": 0}
+
+    def fragil(
+        text: Annotated[str, Field(description="Texto cualquiera.")],
+    ) -> str:
+        """Tool de test que falla con error de red en el primer intento."""
+        intentos["n"] += 1
+        if intentos["n"] == 1:
+            raise ConnectionError("red caída")
+        return "ok"
+
+    schema = ToolSchema.from_callable(fragil)
+    mock = MockLLMClient(
+        [_tool_call(schema.name, call_id="c1"), LLMResponse(content="listo")]
+    )
+    agent = build_agent({"llm_client": mock, "retry_base_delay": 0})
+    agent.register_tool(fragil, schema)
+
+    result = agent.run("usá la herramienta")
+
+    assert intentos["n"] == 2
+    assert result.steps[0].error is None
+    assert result.steps[0].tool_output == "ok"
+    assert result.answer == "listo"
+
+
+def test_tool_con_error_no_transitorio_no_se_reintenta():
+    """Un bug en la tool va a AgentStep.error (el loop sigue, como en M1)."""
+    intentos = {"n": 0}
+
+    def rota(
+        text: Annotated[str, Field(description="Texto cualquiera.")],
+    ) -> str:
+        """Tool de test que siempre pincha con un error de programación."""
+        intentos["n"] += 1
+        raise ValueError("bug adentro de la tool")
+
+    schema = ToolSchema.from_callable(rota)
+    mock = MockLLMClient(
+        [_tool_call(schema.name, call_id="c1"), LLMResponse(content="me recupero")]
+    )
+    agent = build_agent({"llm_client": mock, "retry_base_delay": 0})
+    agent.register_tool(rota, schema)
+
+    result = agent.run("usá la herramienta")
+
+    assert intentos["n"] == 1, "un ValueError no debe reintentarse"
+    assert result.steps[0].error is not None
+    assert result.answer == "me recupero"
+
+
+def test_clasificador_de_transitorios_por_codigo_http():
+    """El duck-typing de status code funciona sin importar el SDK."""
+
+    class ErrorConStatus(Exception):
+        def __init__(self, status_code: int) -> None:
+            super().__init__(f"HTTP {status_code}")
+            self.status_code = status_code
+
+    assert _es_error_transitorio(ErrorConStatus(503))
+    assert _es_error_transitorio(ErrorConStatus(429))
+    assert not _es_error_transitorio(ErrorConStatus(400))
+    assert not _es_error_transitorio(ValueError("no tiene nada de HTTP"))
+    assert _es_error_transitorio(TimeoutError("timeout pelado"))
 
 
 # ---------------------------------------------------------------------------
