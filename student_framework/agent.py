@@ -1,12 +1,20 @@
 """Implementación de su agente.
 
-Completen `register_tool` y `run` para el Milestone 1.
-En el Milestone 2 amplíen `MyAgent` para que sea estatal y respete
-`max_history_messages`.
+M1: bucle ReAct (`register_tool` + `run` + `_dispatch`).
+M2: el agente pasa a ser estatal — llamadas sucesivas a `run` continúan
+la misma conversación — y gestiona su contexto con una ventana deslizante
+(Sliding Window) que garantiza que la lista `messages` enviada al LLM
+nunca supere `max_history_messages`.
 
-Los tests de conformidad en `tests/conformance/test_m1.py` y
-`test_m2.py` describen con precisión qué comportamientos deben funcionar
-— léanlos antes de empezar.
+La separación clave de M2 es historial vs. ventana:
+
+- `self._history` es la memoria completa de la conversación (el *store*:
+  solo crece, nunca se recorta);
+- `_ventana()` es la vista acotada que se envía al LLM en cada `chat`
+  (la *política de lectura*: se recalcula en cada llamada).
+
+Los tests de conformidad en `tests/conformance/test_m1.py` y `test_m2.py`
+describen con precisión los comportamientos exigidos.
 """
 
 from __future__ import annotations
@@ -37,18 +45,20 @@ class MyAgent:
         max_iterations : int
             Tope de iteraciones del bucle del agente (M1).
         max_history_messages : int
-            Número máximo de mensajes que se permiten en la lista
-            `messages` enviada al LLM en una única llamada. En M1 este
-            valor es ignorado; el agente sólo necesita aceptarlo en su
-            constructor. En M2 deben respetarlo: la longitud de la
-            lista de mensajes pasada a `self._llm.chat(...)` no puede
-            superar este número en ninguna llamada, sin importar la
-            estrategia de memoria que elijan.
+            Tope duro para la lista `messages` enviada al LLM: la
+            longitud de lo pasado a `self._llm.chat(...)` no supera este
+            número en ninguna llamada (ver `_ventana`), sin importar
+            cuántos turnos acumule la conversación.
         """
         self._llm = llm_client
         self._system = system_prompt
         self._max_iterations = max_iterations
         self._max_history_messages = max_history_messages
+        # Memoria de la conversación (M2). Historial completo y persistente
+        # entre llamadas a `run`: acá se escribe TODO (turnos de usuario,
+        # del assistant y resultados de tools). Lo que se envía al LLM en
+        # cada chat es la vista recortada que devuelve `_ventana()`.
+        self._history: list[dict[str, Any]] = []
         # Estado de las herramientas registradas. Indexamos por el nombre
         # del esquema para que, al ejecutar un tool_call, podamos buscar el
         # callable por `tool_call.name` y para que `AgentStep.tool_name`
@@ -76,50 +86,47 @@ class MyAgent:
     def run(self, user_message: str) -> AgentResult:
         """Ejecuta el bucle del agente hasta una respuesta final o hasta max_iterations.
 
-        Comportamiento esperado (consulta tests/conformance/test_m1.py
-        para el contrato exacto del M1):
+        Contrato (tests/conformance/test_m1.py y test_m2.py):
           - Llama a `self._llm.chat(..., tools=list(self._schemas.values()))`.
           - Si la respuesta contiene tool_calls, ejecuta cada uno y vuelca
             los resultados en la siguiente llamada al chat.
-          - Si la respuesta solo contiene texto (sin `tool_calls`),
-            devuélvelo en `AgentResult.answer`. En M1 no uses la tool
-            sintética `final_result`; ese patrón es de M2 (ver README y
-            ENUNCIADO_M2.md).
-          - Limita el bucle a `self._max_iterations` y termina de forma
-            limpia cuando se alcance.
-          - Registra cada invocación de herramienta como un `AgentStep`
-            dentro de `result.steps`.
+          - Si la respuesta solo contiene texto (sin `tool_calls`), lo
+            devuelve en `AgentResult.answer`. El cierre de `run` sigue
+            siendo el de M1 (texto sin tools); `final_result` es exclusivo
+            de `structured_call`.
+          - Limita el bucle a `self._max_iterations` y termina limpio.
+          - Registra cada invocación de herramienta como un `AgentStep`.
 
-        En el M2, además, llamadas sucesivas sobre la misma instancia
-        deben continuar la conversación, y la longitud de la lista de
-        mensajes enviada al LLM no debe superar `self._max_history_messages`.
-        Acumula los tokens de entrada/salida reportados por los
-        `LLMResponse` y exponlos en `AgentResult.input_tokens` /
-        `AgentResult.output_tokens`.
+        Estado (M2): la conversación persiste en `self._history`, así que
+        llamadas sucesivas sobre la misma instancia la continúan. Cada
+        `chat` recibe `_ventana()`, nunca más de `max_history_messages`
+        mensajes.
         """
-        # Historial local de esta llamada a `run` (en M1 no hay estado
-        # persistente entre llamadas). Arranca con el mensaje del usuario.
-        messages: list[dict[str, Any]] = [{"role": "user", "content": user_message}]
+        self._history.append({"role": "user", "content": user_message})
         steps: list[AgentStep] = []
 
         # El `for` (en vez de `while True`) es nuestra garantía de no tener
         # bucles infinitos: como mucho hacemos `max_iterations` llamadas al LLM.
         for _ in range(self._max_iterations):
             response = self._llm.chat(
-                messages=messages,
+                messages=self._ventana(),
                 # Sin tools registradas pasamos None; el contrato exige que,
                 # si hay tools, su nombre aparezca en la lista enviada.
                 tools=list(self._schemas.values()) or None,
                 system=self._system,
             )
 
-            # Condición de parada de M1: texto sin tool_calls => respuesta final.
+            # Condición de parada: texto sin tool_calls => respuesta final.
+            # Se persiste como turno del assistant para que los próximos
+            # `run` la vean como parte de la conversación.
             if not response.tool_calls:
-                return AgentResult(answer=response.content or "", steps=steps)
+                answer = response.content or ""
+                self._history.append({"role": "assistant", "content": answer})
+                return AgentResult(answer=answer, steps=steps)
 
             # El LLM pidió herramientas. Registramos su turno (con los
             # tool_calls) y luego ejecutamos cada una.
-            messages.append(self._assistant_turn(response))
+            self._history.append(self._assistant_turn(response))
             for call in response.tool_calls:
                 output, error = self._dispatch(call)
                 steps.append(
@@ -132,7 +139,7 @@ class MyAgent:
                 )
                 # Realimentamos el resultado (o el error) al LLM como un
                 # mensaje `role: "tool"` antes de volver a llamar a `chat`.
-                messages.append(
+                self._history.append(
                     {
                         "role": "tool",
                         "tool_call_id": call.id,
@@ -147,6 +154,62 @@ class MyAgent:
             steps=steps,
             error=f"Se alcanzó el máximo de iteraciones ({self._max_iterations}).",
         )
+
+    def _ventana(self) -> list[dict[str, Any]]:
+        """Vista del historial acotada a `max_history_messages` (Sliding Window).
+
+        Política (y su porqué, en orden de prioridad):
+
+        1. **Recencia (invariante del enunciado):** el último mensaje del
+           usuario aparece siempre. Sin él, el LLM ni siquiera sabría qué
+           se le está preguntando en este turno.
+        2. **Ancla:** se conserva el primer mensaje del usuario (el "goal"
+           de la conversación); es el recorte recomendado en clase para no
+           olvidar el objetivo aunque el medio se descarte.
+        3. **Cola reciente:** el resto del presupuesto se llena con los
+           mensajes más nuevos, que son los que sostienen el turno actual.
+        4. **Coherencia estructural:** un `role:"tool"` sin el turno
+           assistant que emitió su `tool_call` es un huérfano: si el corte
+           deja huérfanos al inicio de la cola, se descartan. Quedar por
+           debajo del tope es válido; superarlo o mandar pares rotos, no.
+
+        El system prompt y los esquemas de tools NO consumen presupuesto:
+        viajan por los parámetros `system=` y `tools=` de `chat(...)`,
+        fuera de la lista `messages`.
+        """
+        historia = self._history
+        tope = self._max_history_messages
+        if len(historia) <= tope:
+            return list(historia)
+
+        # Índice del último mensaje del usuario (existe siempre: `run` y
+        # `structured_call` lo agregan antes de llamar al LLM).
+        i_ultimo_user = max(
+            i for i, m in enumerate(historia) if m.get("role") == "user"
+        )
+
+        # Caso normal: ancla + cola de los últimos (tope - 1) mensajes.
+        # Con tope 1 no hay lugar para el ancla: va solo la cola.
+        usa_ancla = tope >= 2
+        n_cola = tope - 1 if usa_ancla else tope
+        inicio_cola = len(historia) - n_cola
+
+        if inicio_cola <= i_ultimo_user:
+            cola = historia[inicio_cola:]
+            # Coherencia: sin resultados de tool huérfanos al inicio.
+            while cola and cola[0].get("role") == "tool":
+                cola = cola[1:]
+            return ([historia[0]] if usa_ancla else []) + cola
+
+        # Presupuesto tan chico que la cola reciente ya no incluye al
+        # último user (p. ej. un run con muchas tools): la recencia manda.
+        # El último user desplaza al ancla y encabeza la ventana; la cola
+        # se acorta en uno para hacerle lugar. Los huérfanos se limpian
+        # ANTES de prepender el user, para que no queden ocultos tras él.
+        cola = historia[len(historia) - (tope - 1):] if tope >= 2 else []
+        while cola and cola[0].get("role") == "tool":
+            cola = cola[1:]
+        return [historia[i_ultimo_user]] + cola
 
     def _dispatch(self, call: ToolCall) -> tuple[str | None, str | None]:
         """Ejecuta un único `tool_call`. Devuelve `(output, error)` y nunca lanza.
