@@ -22,8 +22,21 @@ from __future__ import annotations
 import json
 from typing import Any, Callable
 
+from pydantic import ValidationError
+
 from mia_agents.protocols import LLMClient
+from mia_agents.tool_schema import FINAL_RESULT_TOOL_NAME, final_result_tool_schema
 from mia_agents.types import AgentResult, AgentStep, LLMResponse, ToolCall, ToolSchema
+
+
+class SalidaEstructuradaError(RuntimeError):
+    """`structured_call` agotó los reintentos sin lograr una salida válida.
+
+    Se levanta en lugar de devolver `None` o una instancia parcial: el
+    contrato de `structured_call` es "instancia válida o excepción limpia".
+    La causa original (ValidationError, JSONDecodeError, ...) queda
+    encadenada en `__cause__` cuando existe.
+    """
 
 
 class MyAgent:
@@ -176,8 +189,14 @@ class MyAgent:
             output_tokens=tokens_salida if alguien_reporto else None,
         )
 
-    def _ventana(self) -> list[dict[str, Any]]:
+    def _ventana(
+        self, historia: list[dict[str, Any]] | None = None
+    ) -> list[dict[str, Any]]:
         """Vista del historial acotada a `max_history_messages` (Sliding Window).
+
+        Opera sobre `self._history` por defecto; `structured_call` le pasa
+        su lista de trabajo (conversación + mensajes locales de reparación)
+        porque el tope rige para TODA llamada a `chat`, no solo las de `run`.
 
         Política (y su porqué, en orden de prioridad):
 
@@ -198,7 +217,8 @@ class MyAgent:
         viajan por los parámetros `system=` y `tools=` de `chat(...)`,
         fuera de la lista `messages`.
         """
-        historia = self._history
+        if historia is None:
+            historia = self._history
         tope = self._max_history_messages
         if len(historia) <= tope:
             return list(historia)
@@ -282,23 +302,119 @@ class MyAgent:
     ) -> Any:
         """Pide al LLM una respuesta validada contra `schema` (M2).
 
-        Obligatorio: herramienta sintética `final_result` (ver
-        `mia_agents.final_result_tool_schema` / `FINAL_RESULT_TOOL_NAME`).
-        El agente ofrece esa tool al LLM, valida los `arguments` del
-        `tool_call` y reintenta con contexto de reparación si el modelo
-        responde con texto libre o con argumentos inválidos.
+        Mecanismo: se le ofrece al LLM una única herramienta sintética,
+        `final_result`, cuyo JSON Schema de argumentos ES el `schema`
+        Pydantic pedido. "Responder" pasa a ser "invocar esa tool con
+        argumentos válidos": el schema es la firma de la tool y la
+        condición de aceptación a la vez. No se registra con
+        `register_tool` porque no ejecuta nada — es solo el cierre.
 
-        Implementa esto en el M2:
-          - Pasa `tools=[final_result_tool_schema(schema)]` en cada
-            llamada a `chat` dentro de este método.
-          - Termina solo cuando llega un `tool_call` a `final_result`
-            cuyos argumentos validan con `schema.model_validate(...)`.
-          - Reintenta hasta `max_repair_attempts` incluyendo el fallo en
-            los mensajes (respuesta previa, mensaje `tool`, o user de
-            reparación).
-          - Si tras los reintentos sigue fallando, levanta una excepción
-            limpia (no devuelvas valores parciales ni `None` sin avisar).
+        Reparación: hasta `1 + max_repair_attempts` llamadas. Cada modo de
+        fallo recibe una respuesta distinta para que el modelo pueda
+        corregirse:
+          - argumentos inválidos (JSON roto / ValidationError) → mensaje
+            `role:"tool"` con el detalle del error;
+          - texto libre → mensaje `role:"user"` de reparación;
+          - tool alucinada → mensaje `role:"tool"` indicando que solo
+            existe `final_result`.
+        Agotados los intentos levanta `SalidaEstructuradaError` (nunca
+        devuelve `None` ni instancias parciales).
 
-        El M1 deja esto como stub; los tests de M2 verifican el contrato.
+        Memoria: el prompt y el resultado validado se persisten en la
+        conversación (los `run` posteriores los ven); los intentos de
+        reparación quedan locales a esta llamada. Si todo falla, el
+        historial no se toca. La ventana (`_ventana`) aplica igual que en
+        `run`: ninguna llamada supera `max_history_messages` mensajes.
         """
-        raise NotImplementedError("M2: implementa salida estructurada con reparación")
+        tool_de_cierre = final_result_tool_schema(schema)
+        # Lista de trabajo local: la conversación + el prompt + los
+        # intercambios de reparación. Recién se persiste al tener éxito.
+        trabajo = list(self._history) + [{"role": "user", "content": prompt}]
+        ultima_causa: Exception | None = None
+        detalle_final = "el modelo no produjo una salida válida"
+
+        for _ in range(1 + max_repair_attempts):
+            response = self._llm.chat(
+                messages=self._ventana(trabajo),
+                tools=[tool_de_cierre],
+                system=self._system,
+            )
+
+            # Caso 1: texto libre, sin tool_calls => pedir el formato.
+            if not response.tool_calls:
+                detalle_final = "el modelo respondió texto libre en lugar de invocar final_result"
+                trabajo.append(
+                    {"role": "assistant", "content": response.content or ""}
+                )
+                trabajo.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            "Tu respuesta anterior fue texto libre y no sirve. "
+                            f"Invocá la herramienta {FINAL_RESULT_TOOL_NAME} con "
+                            "argumentos que respeten exactamente su schema; no "
+                            "respondas con texto."
+                        ),
+                    }
+                )
+                continue
+
+            # Hubo tool_calls: los registramos como turno del assistant y
+            # respondemos cada uno (dejar un tool_call sin respuesta rompe
+            # la coherencia <tool_call, tool_response> del historial).
+            trabajo.append(self._assistant_turn(response))
+            cierre = next(
+                (tc for tc in response.tool_calls if tc.name == FINAL_RESULT_TOOL_NAME),
+                None,
+            )
+
+            for call in response.tool_calls:
+                if cierre is not None and call.id == cierre.id:
+                    continue  # el cierre se evalúa después, con su propio mensaje
+                detalle_final = f"el modelo invocó una herramienta inexistente: {call.name!r}"
+                trabajo.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": call.id,
+                        "content": (
+                            f"Herramienta desconocida: {call.name!r}. La única "
+                            f"disponible es {FINAL_RESULT_TOOL_NAME}; invocala "
+                            "con argumentos válidos para terminar."
+                        ),
+                    }
+                )
+            if cierre is None:
+                continue
+
+            # Caso 2: llegó final_result => validar argumentos contra schema.
+            try:
+                datos = json.loads(cierre.arguments) if cierre.arguments else {}
+                instancia = schema.model_validate(datos)
+            except (json.JSONDecodeError, ValidationError) as exc:
+                ultima_causa = exc
+                detalle_final = f"los argumentos de {FINAL_RESULT_TOOL_NAME} no validan"
+                trabajo.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": cierre.id,
+                        "content": (
+                            f"Argumentos inválidos para {FINAL_RESULT_TOOL_NAME}: "
+                            f"{exc}. Volvé a invocar la herramienta corrigiendo "
+                            "exactamente esos campos."
+                        ),
+                    }
+                )
+                continue
+
+            # Éxito: persistimos el intercambio limpio (prompt + resultado)
+            # en la conversación; los intentos fallidos quedan afuera.
+            self._history.append({"role": "user", "content": prompt})
+            self._history.append(
+                {"role": "assistant", "content": instancia.model_dump_json()}
+            )
+            return instancia
+
+        raise SalidaEstructuradaError(
+            f"structured_call agotó {1 + max_repair_attempts} intentos: "
+            f"{detalle_final}."
+        ) from ultima_causa

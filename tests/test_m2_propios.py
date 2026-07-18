@@ -15,10 +15,34 @@ from __future__ import annotations
 
 import json
 
+import pytest
+from pydantic import BaseModel
+
 from mia_agents.testing import MockLLMClient, make_recording_tool
+from mia_agents.tool_schema import FINAL_RESULT_TOOL_NAME
 from mia_agents.types import LLMResponse, ToolCall
 
 from student_framework import build_agent
+from student_framework.agent import SalidaEstructuradaError
+
+
+class Respuesta(BaseModel):
+    """Schema chico para los tests de salida estructurada."""
+
+    valor: int
+    comentario: str
+
+
+def _final_result(arguments: dict | str, call_id: str = "fr-1") -> LLMResponse:
+    """Respuesta guionada: el LLM invoca `final_result` con esos argumentos."""
+    if isinstance(arguments, dict):
+        arguments = json.dumps(arguments)
+    return LLMResponse(
+        content=None,
+        tool_calls=[
+            ToolCall(id=call_id, name=FINAL_RESULT_TOOL_NAME, arguments=arguments)
+        ],
+    )
 
 
 def _tool_call(schema_name: str, call_id: str) -> LLMResponse:
@@ -152,6 +176,140 @@ def test_ancla_conserva_el_primer_mensaje_del_usuario():
         f"la ventana debería arrancar con el goal (turno 0): {ultima!r}"
     )
     assert "turno 9" in str(ultima), "la cola reciente debe incluir el turno actual"
+
+
+# ---------------------------------------------------------------------------
+# Salida estructurada: modos de fallo y reparación
+# ---------------------------------------------------------------------------
+
+
+def test_structured_call_repara_texto_libre():
+    """Texto libre => mensaje user de reparación => el modelo se corrige."""
+    mock = MockLLMClient(
+        [
+            LLMResponse(content="claro, el valor es 7"),
+            _final_result({"valor": 7, "comentario": "ok"}),
+        ]
+    )
+    agent = build_agent({"llm_client": mock})
+
+    parsed = agent.structured_call(prompt="dame un objeto", schema=Respuesta)
+
+    assert isinstance(parsed, Respuesta) and parsed.valor == 7
+    assert mock.call_count == 2
+    # El segundo intento debe ver la instrucción de reparación como user.
+    reparacion = mock.calls[1]["messages"][-1]
+    assert reparacion["role"] == "user"
+    assert FINAL_RESULT_TOOL_NAME in reparacion["content"]
+
+
+def test_structured_call_repara_tool_alucinada():
+    """Un tool_call a otra herramienta se responde con error y se reintenta."""
+    mock = MockLLMClient(
+        [
+            LLMResponse(
+                content=None,
+                tool_calls=[
+                    ToolCall(id="x1", name="calculadora", arguments="{}")
+                ],
+            ),
+            _final_result({"valor": 1, "comentario": "ok"}),
+        ]
+    )
+    agent = build_agent({"llm_client": mock})
+
+    parsed = agent.structured_call(prompt="dame un objeto", schema=Respuesta)
+
+    assert parsed.valor == 1
+    assert mock.call_count == 2
+    # La reparación viajó como respuesta de tool al call alucinado.
+    ultimo = mock.calls[1]["messages"][-1]
+    assert ultimo["role"] == "tool" and ultimo["tool_call_id"] == "x1"
+
+
+def test_structured_call_repara_json_invalido():
+    """Argumentos que ni siquiera son JSON disparan la misma reparación."""
+    mock = MockLLMClient(
+        [
+            _final_result("{esto no es json"),
+            _final_result({"valor": 3, "comentario": "ok"}, call_id="fr-2"),
+        ]
+    )
+    agent = build_agent({"llm_client": mock})
+
+    parsed = agent.structured_call(prompt="dame un objeto", schema=Respuesta)
+
+    assert parsed.valor == 3
+    assert mock.call_count == 2
+
+
+def test_structured_call_respeta_la_ventana():
+    """El tope de mensajes rige también dentro de structured_call."""
+    tope = 4
+    mock = MockLLMClient(
+        [
+            LLMResponse(content="hola"),  # run previo para poblar historial
+            LLMResponse(content="texto libre 1"),
+            LLMResponse(content="texto libre 2"),
+            _final_result({"valor": 9, "comentario": "ok"}),
+        ]
+    )
+    agent = build_agent({"llm_client": mock, "max_history_messages": tope})
+
+    agent.run("un turno previo cualquiera")
+    parsed = agent.structured_call(
+        prompt="dame un objeto", schema=Respuesta, max_repair_attempts=3
+    )
+
+    assert parsed.valor == 9
+    for llamada in mock.calls:
+        assert len(llamada["messages"]) <= tope, (
+            f"structured_call superó el tope: {llamada['messages']!r}"
+        )
+
+
+def test_structured_call_persiste_solo_el_intercambio_limpio():
+    """El prompt y el resultado validado entran a la conversación; los
+    intentos fallidos de reparación no la contaminan."""
+    mock = MockLLMClient(
+        [
+            LLMResponse(content="bla bla texto libre"),
+            _final_result({"valor": 5, "comentario": "listo"}),
+            LLMResponse(content="respuesta posterior"),
+        ]
+    )
+    agent = build_agent({"llm_client": mock})
+
+    agent.structured_call(prompt="calculá el objeto", schema=Respuesta)
+    agent.run("¿qué valor habías calculado?")
+
+    payload = str(mock.calls[-1]["messages"])
+    assert "calculá el objeto" in payload, "el prompt debe quedar en la conversación"
+    assert '"valor":5' in payload.replace(" ", ""), (
+        "el resultado validado debe quedar en la conversación"
+    )
+    assert "bla bla" not in payload, "los intentos fallidos no se persisten"
+
+
+def test_structured_call_fallido_no_toca_el_historial():
+    """Si se agotan los reintentos, la conversación queda como estaba."""
+    mock = MockLLMClient(
+        [
+            LLMResponse(content="no"),
+            LLMResponse(content="tampoco"),
+            LLMResponse(content="menos"),
+            LLMResponse(content="respuesta posterior"),
+        ]
+    )
+    agent = build_agent({"llm_client": mock})
+
+    with pytest.raises(SalidaEstructuradaError):
+        agent.structured_call(prompt="dame un objeto", schema=Respuesta)
+
+    agent.run("seguimos")
+    payload = str(mock.calls[-1]["messages"])
+    assert "dame un objeto" not in payload
+    assert "seguimos" in payload
 
 
 # ---------------------------------------------------------------------------
