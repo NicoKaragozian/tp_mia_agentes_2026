@@ -101,9 +101,19 @@ class MyAgent:
         llamadas sucesivas sobre la misma instancia la continúan. Cada
         `chat` recibe `_ventana()`, nunca más de `max_history_messages`
         mensajes.
+
+        Tokens (M2): `AgentResult.input_tokens/output_tokens` acumulan lo
+        reportado por los `LLMResponse` de ESTE run. Si ninguno reportó
+        tokens quedan en `None`; si alguno reportó, se suma tratando los
+        `None` por-respuesta como 0 (regla del docstring de `AgentResult`).
         """
         self._history.append({"role": "user", "content": user_message})
         steps: list[AgentStep] = []
+        tokens_entrada = 0
+        tokens_salida = 0
+        # Bandera global: distingue "nadie reportó" (→ None) de "alguien
+        # reportó y los demás no" (→ los faltantes suman 0).
+        alguien_reporto = False
 
         # El `for` (en vez de `while True`) es nuestra garantía de no tener
         # bucles infinitos: como mucho hacemos `max_iterations` llamadas al LLM.
@@ -115,6 +125,10 @@ class MyAgent:
                 tools=list(self._schemas.values()) or None,
                 system=self._system,
             )
+            if response.input_tokens is not None or response.output_tokens is not None:
+                alguien_reporto = True
+            tokens_entrada += response.input_tokens or 0
+            tokens_salida += response.output_tokens or 0
 
             # Condición de parada: texto sin tool_calls => respuesta final.
             # Se persiste como turno del assistant para que los próximos
@@ -122,7 +136,12 @@ class MyAgent:
             if not response.tool_calls:
                 answer = response.content or ""
                 self._history.append({"role": "assistant", "content": answer})
-                return AgentResult(answer=answer, steps=steps)
+                return AgentResult(
+                    answer=answer,
+                    steps=steps,
+                    input_tokens=tokens_entrada if alguien_reporto else None,
+                    output_tokens=tokens_salida if alguien_reporto else None,
+                )
 
             # El LLM pidió herramientas. Registramos su turno (con los
             # tool_calls) y luego ejecutamos cada una.
@@ -153,6 +172,8 @@ class MyAgent:
             answer="",
             steps=steps,
             error=f"Se alcanzó el máximo de iteraciones ({self._max_iterations}).",
+            input_tokens=tokens_entrada if alguien_reporto else None,
+            output_tokens=tokens_salida if alguien_reporto else None,
         )
 
     def _ventana(self) -> list[dict[str, Any]]:

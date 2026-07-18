@@ -154,6 +154,40 @@ def test_ancla_conserva_el_primer_mensaje_del_usuario():
     assert "turno 9" in str(ultima), "la cola reciente debe incluir el turno actual"
 
 
+# ---------------------------------------------------------------------------
+# Tracking de tokens
+# ---------------------------------------------------------------------------
+
+
+def test_tokens_quedan_en_none_si_nadie_reporto():
+    """Un mock sin tokens programados no debe inventar ceros."""
+    mock = MockLLMClient([LLMResponse(content="hola")])
+    agent = build_agent({"llm_client": mock})
+
+    result = agent.run("hola")
+
+    assert result.input_tokens is None
+    assert result.output_tokens is None
+
+
+def test_tokens_se_reinician_en_cada_run():
+    """El enunciado pide acumular 'durante una llamada a run': el segundo
+    run reporta solo sus propios tokens, no arrastra los del primero."""
+    mock = MockLLMClient(
+        [
+            LLMResponse(content="r1", input_tokens=100, output_tokens=10),
+            LLMResponse(content="r2", input_tokens=7, output_tokens=3),
+        ]
+    )
+    agent = build_agent({"llm_client": mock})
+
+    primero = agent.run("uno")
+    segundo = agent.run("dos")
+
+    assert (primero.input_tokens, primero.output_tokens) == (100, 10)
+    assert (segundo.input_tokens, segundo.output_tokens) == (7, 3)
+
+
 def test_presupuesto_minimo_envia_solo_el_ultimo_user():
     """Caso extremo tope=1: cada llamada lleva exactamente el último user."""
     tool, schema = make_recording_tool()
