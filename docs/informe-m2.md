@@ -232,7 +232,7 @@ ceros); si alguna reportó, se suma tratando los `None` individuales como 0.
 - Suite completa: `python -m pytest tests/ --ignore=tests/conformance/test_m3_world.py`
   → **105/105 en verde** con `MockLLMClient` (sin claves de API).
 - Conformidad: `test_m1.py` **5/5** (el cierre de `run` sigue siendo el de M1)
-  y `test_m2.py` **8/8**. Archivos FIJOS sin modificar.
+  y `test_m2.py` **7/7**. Archivos FIJOS sin modificar.
 - Tests propios de M2 (`tests/test_m2_propios.py`, 19 casos): tope y
   coherencia de la ventana con tools en el medio, invariante de recencia
   dentro de un run, ancla, presupuesto mínimo, reparación de texto
