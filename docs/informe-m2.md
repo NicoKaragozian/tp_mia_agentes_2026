@@ -34,9 +34,12 @@ estas prioridades:
    entra siempre. Si el presupuesto es tan chico que la cola reciente ya no lo
    incluye (p. ej. un turno con muchas tools), el último user pasa a encabezar
    la ventana desplazando al ancla.
-2. **Ancla:** se conserva el primer mensaje del usuario — el "goal" de la
-   conversación — para que el objetivo no se olvide aunque el medio se
-   descarte (recorte visto en clase: `preserve_first_user`).
+2. **Ancla:** se conserva el mensaje que define el objetivo, para que no se
+   olvide aunque el medio se descarte (recorte visto en clase:
+   `preserve_first_user`). Por defecto es el primer mensaje del usuario — el
+   "goal" de la conversación —, pero **`structured_call` mueve el ancla a su
+   propio prompt** mientras dura: durante las reparaciones, el objetivo es
+   responder *esa* pregunta (ver 1.4).
 3. **Cola reciente:** el resto del presupuesto se llena con los últimos
    `N-1` mensajes.
 4. **Coherencia estructural:** un mensaje `role:"tool"` sin el turno assistant
@@ -45,6 +48,12 @@ estas prioridades:
    superarlo o mandar pares `<tool_call, tool_response>` rotos, no. (Además de
    confundir al modelo, un `toolResult` sin su `toolUse` rompe el formato de
    la API Converse de Bedrock.)
+5. **La ventana siempre arranca con un mensaje de usuario.** Cuando no hay
+   una cabeza fija que prependa, el recorte descarta del inicio hasta el
+   primer `user`. La API Converse de Bedrock rechaza una conversación que no
+   empieza con un turno de usuario, y esta regla —más fuerte que la
+   anterior— elimina de paso los huérfanos, que también son mensajes
+   no-usuario.
 
 Tres decisiones complementarias:
 
@@ -87,7 +96,32 @@ Tres decisiones complementarias:
   el caso donde los dos contratos del enunciado son incompatibles entre sí;
   se resolvió rechazando esa configuración en el constructor (ver arriba).
 
-### 1.4. Resiliencia del historial: `answer` nunca vacío
+### 1.4. El ancla móvil (bug encontrado en la revisión final)
+
+La versión inicial anclaba siempre en `historia[0]`. Eso funciona para `run`,
+pero rompía `structured_call`: en una conversación con historial previo y un
+presupuesto ajustado, el prompt quedaba entre el ancla (un turno viejo de la
+conversación) y la cola reciente, así que **se caía de la ventana en cuanto
+los mensajes de reparación lo empujaban hacia atrás**. El modelo recibía
+"corregí tu respuesta anterior e invocá `final_result`" sin la pregunta que
+tenía que responder: las reparaciones estaban condenadas a fallar, gastando
+llamadas y tokens en silencio.
+
+El arreglo fue generalizar el ancla a un parámetro (`indice_ancla`) en lugar
+de fijarla en la posición 0, y que `structured_call` apunte al prompt. La
+prioridad quedó explícita: **recencia > ancla > cola**. Con presupuestos muy
+chicos (tope 2) la ventana termina siendo exactamente `[prompt, reparación]`,
+que es el mínimo útil.
+
+Se detectó ejercitando la ventana con historiales reales y verificando dos
+propiedades que la suite no miraba: que el prompt siguiera presente en cada
+intento, y que el formato sobreviviera a los normalizadores de Ollama y
+Bedrock. Ambas quedaron como tests permanentes
+(`test_el_prompt_sobrevive_a_las_reparaciones`,
+`test_ventana_es_valida_para_los_proveedores_reales`), que fallan 14 casos
+contra la versión anterior del recorte.
+
+### 1.5. Resiliencia del historial: `answer` nunca vacío
 
 El enunciado exige que, aun en conversaciones largas, cada `run` devuelva un
 `AgentResult` con `answer` no vacío. Hay dos caminos donde el vacío podía
@@ -307,10 +341,13 @@ ceros); si alguna reportó, se suma tratando los `None` individuales como 0.
 ## Verificación
 
 - Suite completa: `python -m pytest tests/ --ignore=tests/conformance/test_m3_world.py`
-  → **121/121 en verde** con `MockLLMClient` (sin claves de API).
+  → **144/144 en verde** con `MockLLMClient` (sin claves de API).
 - Conformidad: `test_m1.py` **5/5** (el cierre de `run` sigue siendo el de M1)
   y `test_m2.py` **7/7**. Archivos FIJOS sin modificar.
-- Tests propios de M2 (`tests/test_m2_propios.py`, 33 casos): tope y
+- Tests propios de M2 (`tests/test_m2_propios.py`, 56 casos): validez de la
+  ventana para los proveedores reales (empieza en `user`, sin huérfanas, y
+  sobrevive a los normalizadores de Ollama y Bedrock), supervivencia del
+  prompt a las reparaciones, tope y
   coherencia de la ventana con tools en el medio, invariante de recencia
   dentro de un run, ancla, presupuesto mínimo, conversación de 30 turnos con
   mensajes extensos (`answer` no vacío en todos), corte por `max_iterations`

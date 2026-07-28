@@ -95,6 +95,33 @@ def _es_error_transitorio(exc: Exception) -> bool:
     return any(marca in nombre for marca in _MARCAS_TRANSITORIAS)
 
 
+def _limpiar_inicio(
+    cola: list[dict[str, Any]], *, hay_cabeza: bool
+) -> list[dict[str, Any]]:
+    """Descarta mensajes del inicio de `cola` para que la ventana sea válida.
+
+    Dos reglas, según qué va antes:
+
+    - Con cabeza (la ventana arranca con un mensaje de usuario que se
+      prepende): basta con tirar los resultados de tool que quedaron sin su
+      `tool_call`, porque el corte los separó de su turno assistant.
+    - Sin cabeza: `cola` ES el inicio de la ventana, así que además debe
+      arrancar en un mensaje de usuario. Los proveedores reales lo exigen
+      (la API Converse de Bedrock rechaza una conversación que no empieza
+      con un turno de usuario), y de paso esta regla más fuerte elimina los
+      huérfanos, que también son mensajes no-usuario.
+    """
+    descartable = (
+        (lambda m: m.get("role") == "tool")
+        if hay_cabeza
+        else (lambda m: m.get("role") != "user")
+    )
+    i = 0
+    while i < len(cola) and descartable(cola[i]):
+        i += 1
+    return cola[i:]
+
+
 def _validar_entero(nombre: str, valor: Any, *, minimo: int, motivo: str = "") -> None:
     """Exige un entero real >= `minimo`; si no, `ValueError` explicando por qué.
 
@@ -338,7 +365,9 @@ class MyAgent:
         )
 
     def _ventana(
-        self, historia: list[dict[str, Any]] | None = None
+        self,
+        historia: list[dict[str, Any]] | None = None,
+        indice_ancla: int = 0,
     ) -> list[dict[str, Any]]:
         """Vista del historial acotada a `max_history_messages` (Sliding Window).
 
@@ -346,14 +375,22 @@ class MyAgent:
         su lista de trabajo (conversación + mensajes locales de reparación)
         porque el tope rige para TODA llamada a `chat`, no solo las de `run`.
 
+        `indice_ancla` dice cuál es el mensaje que define el objetivo y por
+        lo tanto no debe perderse. Por defecto es el primero (el goal de la
+        conversación); `structured_call` apunta al prompt que está tratando
+        de responder, porque durante las reparaciones ESE es el objetivo:
+        sin él, el modelo recibiría "corregí tu respuesta" sin saber a qué
+        pregunta responde.
+
         Política (y su porqué, en orden de prioridad):
 
         1. **Recencia (invariante del enunciado):** el último mensaje del
            usuario aparece siempre. Sin él, el LLM ni siquiera sabría qué
            se le está preguntando en este turno.
-        2. **Ancla:** se conserva el primer mensaje del usuario (el "goal"
-           de la conversación); es el recorte recomendado en clase para no
-           olvidar el objetivo aunque el medio se descarte.
+        2. **Ancla:** se conserva el mensaje señalado por `indice_ancla`
+           (por defecto el primero: el "goal" de la conversación); es el
+           recorte recomendado en clase para no olvidar el objetivo aunque
+           el medio se descarte.
         3. **Cola reciente:** el resto del presupuesto se llena con los
            mensajes más nuevos, que son los que sostienen el turno actual.
         4. **Coherencia estructural:** un `role:"tool"` sin el turno
@@ -384,21 +421,28 @@ class MyAgent:
         inicio_cola = len(historia) - n_cola
 
         if inicio_cola <= i_ultimo_user:
-            cola = historia[inicio_cola:]
-            # Coherencia: sin resultados de tool huérfanos al inicio.
-            while cola and cola[0].get("role") == "tool":
-                cola = cola[1:]
-            return ([historia[0]] if usa_ancla else []) + cola
+            # Si el ancla ya cae dentro de la cola no la repetimos: quedar
+            # por debajo del tope es válido, duplicar un mensaje no.
+            hay_cabeza = usa_ancla and indice_ancla < inicio_cola
+            cola = _limpiar_inicio(historia[inicio_cola:], hay_cabeza=hay_cabeza)
+            if hay_cabeza:
+                return [historia[indice_ancla]] + cola
+            return cola
 
-        # Presupuesto tan chico que la cola reciente ya no incluye al
-        # último user (p. ej. un run con muchas tools): la recencia manda.
-        # El último user desplaza al ancla y encabeza la ventana; la cola
-        # se acorta en uno para hacerle lugar. Los huérfanos se limpian
-        # ANTES de prepender el user, para que no queden ocultos tras él.
-        cola = historia[len(historia) - (tope - 1):] if tope >= 2 else []
-        while cola and cola[0].get("role") == "tool":
-            cola = cola[1:]
-        return [historia[i_ultimo_user]] + cola
+        # Presupuesto tan chico que la cola reciente ya no incluye al último
+        # user (p. ej. un run con muchas tools, o una reparación de
+        # `structured_call`): hay que fijar mensajes a mano. La cabeza se
+        # arma por prioridad — recencia primero (es la invariante dura),
+        # ancla después si sobra lugar — y la cola se acorta para hacerles
+        # sitio. Los huérfanos se limpian ANTES de prepender la cabeza,
+        # para que no queden ocultos tras ella.
+        cabeza: list[dict[str, Any]] = []
+        if usa_ancla and indice_ancla != i_ultimo_user:
+            cabeza.append(historia[indice_ancla])
+        cabeza.append(historia[i_ultimo_user])
+        n_resto = tope - len(cabeza)
+        cola = historia[len(historia) - n_resto:] if n_resto > 0 else []
+        return cabeza + _limpiar_inicio(cola, hay_cabeza=True)
 
     def _con_reintentos(self, operacion: Callable[[], _T]) -> _T:
         """Ejecuta `operacion` reintentando los fallos transitorios.
@@ -509,6 +553,11 @@ class MyAgent:
         tool_de_cierre = final_result_tool_schema(schema)
         # Lista de trabajo local: la conversación + el prompt + los
         # intercambios de reparación. Recién se persiste al tener éxito.
+        # El prompt es el ancla de la ventana mientras dure este método: es
+        # el objetivo que las reparaciones intentan satisfacer, así que no
+        # puede caerse del contexto aunque los mensajes de reparación lo
+        # empujen hacia atrás.
+        indice_prompt = len(self._history)
         trabajo = list(self._history) + [{"role": "user", "content": prompt}]
         ultima_causa: Exception | None = None
         detalle_final = "el modelo no produjo una salida válida"
@@ -516,7 +565,7 @@ class MyAgent:
         for _ in range(1 + max_repair_attempts):
             response = self._con_reintentos(
                 lambda: self._llm.chat(
-                    messages=self._ventana(trabajo),
+                    messages=self._ventana(trabajo, indice_ancla=indice_prompt),
                     tools=[tool_de_cierre],
                     system=self._system,
                 )

@@ -179,6 +179,84 @@ def test_ancla_conserva_el_primer_mensaje_del_usuario():
     assert "turno 9" in str(ultima), "la cola reciente debe incluir el turno actual"
 
 
+def _empieza_en_user(messages: list[dict]) -> bool:
+    """La API Converse de Bedrock rechaza una conversación que no arranca
+    con un turno de usuario; la ventana nunca debe producir eso."""
+    return bool(messages) and messages[0].get("role") == "user"
+
+
+@pytest.mark.parametrize("tope", [1, 2, 3, 4, 5, 6, 7, 12])
+def test_ventana_es_valida_para_los_proveedores_reales(tope: int):
+    """Toda ventana debe empezar en `user`, no tener tools huérfanas y
+    sobrevivir a los normalizadores de Ollama y Bedrock.
+
+    La suite corre con `MockLLMClient`, que acepta cualquier lista de
+    mensajes: sin este test, un formato inválido solo aparecería al correr
+    contra un proveedor real.
+    """
+    from mia_agents.llm_client import BedrockProvider, OllamaProvider
+
+    tool, schema = make_recording_tool()
+    respuestas: list[LLMResponse] = []
+    for i in range(5):
+        respuestas += [_tool_call(schema.name, f"c{i}"), LLMResponse(content=f"ok {i}")]
+    mock = MockLLMClient(respuestas)
+    agent = build_agent({"llm_client": mock, "max_history_messages": tope})
+    agent.register_tool(tool, schema)
+
+    for i in range(5):
+        agent.run(f"turno {i}: consulta con texto de relleno " + "x" * 40)
+
+    for n, llamada in enumerate(mock.calls):
+        messages = llamada["messages"]
+        assert len(messages) <= tope, f"llamada {n}: {len(messages)} > {tope}"
+        assert _empieza_en_user(messages), f"llamada {n} arranca en no-user: {messages!r}"
+        assert _sin_tools_huerfanas(messages), f"llamada {n}: tool huérfana"
+        # Los normalizadores reales no deben lanzar con nuestro formato.
+        BedrockProvider._normalize_messages(messages)
+        OllamaProvider._normalize_messages(messages, "system")
+
+
+@pytest.mark.parametrize("tope", [2, 3, 4, 5, 7])
+@pytest.mark.parametrize("previos", [0, 1, 4])
+def test_el_prompt_sobrevive_a_las_reparaciones(tope: int, previos: int):
+    """El prompt es el ancla mientras dura `structured_call`.
+
+    Sin esto, en una conversación con historial y presupuesto ajustado el
+    modelo recibía "corregí tu respuesta" sin la pregunta que debía
+    responder, y las reparaciones quedaban condenadas a fallar.
+    """
+    mock = MockLLMClient(
+        [LLMResponse(content=f"r{i}") for i in range(previos)]
+        + [
+            LLMResponse(content="texto libre"),
+            LLMResponse(
+                content=None,
+                tool_calls=[ToolCall(id="mal", name="otra_tool", arguments="{}")],
+            ),
+            _final_result('{"valor":', call_id="f1"),
+            _final_result({"valor": 5, "comentario": "ok"}, call_id="f2"),
+        ]
+    )
+    agent = build_agent({"llm_client": mock, "max_history_messages": tope})
+    for i in range(previos):
+        agent.run(f"previo {i}")
+
+    desde = mock.call_count
+    agent.structured_call(
+        prompt="PROMPT-CLAVE", schema=Respuesta, max_repair_attempts=3
+    )
+
+    for n, llamada in enumerate(mock.calls[desde:]):
+        messages = llamada["messages"]
+        assert len(messages) <= tope
+        assert _empieza_en_user(messages)
+        assert "PROMPT-CLAVE" in str(messages), (
+            f"intento {n}: el prompt se cayó de la ventana — el modelo estaría "
+            f"reparando a ciegas. Ventana: {messages!r}"
+        )
+
+
 # ---------------------------------------------------------------------------
 # Salida estructurada: modos de fallo y reparación
 # ---------------------------------------------------------------------------
