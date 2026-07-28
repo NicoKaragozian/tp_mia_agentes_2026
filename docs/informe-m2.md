@@ -133,9 +133,19 @@ error vuelve al loop como observación):
 |---|---|
 | Argumentos inválidos (JSON roto o `ValidationError`) | Mensaje `role:"tool"` con el detalle del error ("qué campo, qué recibió") y la instrucción de reinvocar corrigiendo esos campos |
 | Texto libre (sin `tool_calls`) | Mensaje `role:"user"` de reparación: "invocá `final_result` con argumentos que respeten su schema; no respondas con texto" |
-| Tool alucinada (otro nombre) | Mensaje `role:"tool"` a ese call: "la única herramienta disponible es `final_result`" |
+| Tool alucinada (otro nombre), sin `final_result` en la misma respuesta | Mensaje `role:"tool"` a ese call: "la única herramienta disponible es `final_result`" |
 
-Presupuesto: `1 + max_repair_attempts` llamadas exactas al LLM.
+Presupuesto: `1 + max_repair_attempts` llamadas exactas al LLM (con
+`max_repair_attempts = 0` se hace exactamente una; un valor negativo se
+rechaza con `ValueError` antes de llamar al modelo).
+
+**Caso mixto — `final_result` válido junto a una tool alucinada:** se acepta el
+cierre. Es una decisión deliberada: `structured_call` **no ejecuta** las tools
+que el modelo invoca (solo ofrece `final_result`), así que la invocación
+sobrante no tiene ningún efecto; y el objetivo del método —obtener una
+instancia válida del schema— ya se cumplió. Rechazarla gastaría un intento y
+podría convertir en fallo un caso donde ya teníamos la respuesta correcta.
+Ser permisivo en la entrada y estricto en la validación es lo que conviene acá.
 
 Memoria: el prompt y el resultado validado se **persisten** en la conversación
 (`run` y `structured_call` intercalados mantienen contexto), pero los intentos
@@ -186,7 +196,15 @@ denegado" genérico):
 | Escape del sandbox (p. ej. symlinks) | Que la ruta resuelve fuera del directorio permitido |
 | Archivo inexistente (directorio existente) | **La lista de archivos disponibles en ese directorio**, para que el LLM elija un nombre real y reintente |
 | La ruta es un directorio | Que es un directorio y **su contenido listado**, con un ejemplo de cómo referirse a un archivo interno |
+| Ruta con un carácter nulo (`\u0000`) | Que ese carácter no es válido en un nombre de archivo, y un ejemplo de ruta simple |
 | Archivo demasiado grande / no UTF-8 / error de E/S | El límite (100 KB), o la codificación esperada, o el error del sistema |
+
+Un detalle que apareció revisando: un NUL escapado es **JSON válido**, así que
+el modelo puede emitirlo, y `Path.resolve()` lo rechaza lanzando `ValueError`
+— la tool contradecía su propio contrato de "nunca lanza". Se agregó el
+chequeo explícito y, por las dudas, la resolución de rutas ahora atrapa
+`ValueError`/`OSError` (nombres absurdamente largos, por ejemplo) y los trata
+como ruta inválida.
 
 **Ejemplo de recuperación:** el LLM invoca `leer_archivo(ruta="notas.md")` y
 el archivo no existe → recibe `Error: el archivo 'notas.md' no existe.
@@ -203,11 +221,31 @@ transitorios con backoff exponencial (`base * 2^intento`, configurables
 no importa SDKs de proveedores: usa la jerarquía estándar (`TimeoutError`,
 `ConnectionError`), duck-typing de códigos HTTP (408, 429, 5xx en
 `status_code`/`status`/`response`), el `Error.Code` estilo botocore y una
-heurística por nombre de clase. Un error no transitorio (`ValueError`,
-`TypeError`...) se propaga limpio sin reintentos: repetir un bug no lo
-arregla. Agotados los reintentos: si falló el LLM, la excepción se propaga
-(sin modelo no hay plan B); si falló una tool, el error va a `AgentStep.error`
-y vuelve al loop como observación — un solo fallo no rompe el bucle.
+heurística por nombre de clase.
+
+**Qué significa "propagarse limpiamente" acá.** Hay dos capas y conviene no
+confundirlas:
+
+1. **En el helper de reintentos:** un error no transitorio (`ValueError`,
+   `TypeError`...) sale inmediatamente, sin consumir reintentos. Repetir un
+   bug no lo arregla. Lo mismo cuando se agotan los reintentos de uno
+   transitorio: se re-lanza la última excepción, no se devuelve un valor
+   inventado.
+2. **En el bucle del agente**, según de dónde venga el error:
+   - **del cliente LLM** → la excepción sale de `run` hacia el llamador: sin
+     modelo no hay plan B posible;
+   - **de una herramienta** → el mensaje va a `AgentStep.error` y se
+     realimenta al LLM como observación, que es el comportamiento fijado por
+     el contrato de M1 ("si una tool falla, el agente no se rompe: `run`
+     siempre devuelve un `AgentResult` y el fallo queda en un `AgentStep` con
+     `error` no nulo") y lo que pide la guía de la materia sobre manejo de
+     errores: el error vuelve al loop como observación y el agente busca una
+     alternativa; no se rompe el bucle entero por un solo fallo ni se exponen
+     stack traces al usuario.
+
+   La consecuencia práctica es que el agente le da al modelo la chance de
+   corregirse —que es justamente el objetivo de los mensajes accionables de la
+   sección 3— en lugar de abortar la conversación.
 
 ### 3.4. Tokens
 
@@ -234,12 +272,22 @@ ceros); si alguna reportó, se suma tratando los `None` individuales como 0.
 - Bucles sin fin → `max_iterations` (heredado de M1), con cierre informativo.
 - Respuestas degeneradas del modelo (contenido vacío) → texto de cierre en
   lugar de `answer` vacío.
-- Configuración incoherente del agente → `ValueError` al construir.
+- Configuración incoherente del agente (tope < 1, contadores no enteros,
+  demora negativa/`NaN`/infinita, `max_repair_attempts` negativo) →
+  `ValueError` explícito antes de tocar nada.
 
 ### Fuera del alcance (decisiones explícitas)
 
 - **Fallo definitivo del LLM:** agotados los reintentos, la excepción se
   propaga al llamador; no inventamos una respuesta sin modelo.
+- **Excepción no transitoria dentro de una herramienta:** NO aborta `run`. El
+  enunciado de M2 pide que "los errores no recuperables se propaguen
+  limpiamente" y el de M1 pide que una tool que falla no rompa el agente. Los
+  conciliamos por capa (ver 3.3): el error sale limpio del helper de
+  reintentos, y el bucle lo convierte en observación para el modelo. Se
+  privilegia el contrato de M1 porque es el más específico sobre este caso y
+  coincide con la guía de la materia; queda registrado acá como decisión
+  consciente, no como omisión.
 - **Presupuestos extremos:** con `max_history_messages` menor que un grupo
   `assistant + tools`, la ventana degrada a "solo el último user" y el modelo
   puede repetir tool calls. Se respeta el tope, no la eficiencia. Con un tope
@@ -259,10 +307,10 @@ ceros); si alguna reportó, se suma tratando los `None` individuales como 0.
 ## Verificación
 
 - Suite completa: `python -m pytest tests/ --ignore=tests/conformance/test_m3_world.py`
-  → **112/112 en verde** con `MockLLMClient` (sin claves de API).
+  → **121/121 en verde** con `MockLLMClient` (sin claves de API).
 - Conformidad: `test_m1.py` **5/5** (el cierre de `run` sigue siendo el de M1)
   y `test_m2.py` **7/7**. Archivos FIJOS sin modificar.
-- Tests propios de M2 (`tests/test_m2_propios.py`, 26 casos): tope y
+- Tests propios de M2 (`tests/test_m2_propios.py`, 33 casos): tope y
   coherencia de la ventana con tools en el medio, invariante de recencia
   dentro de un run, ancla, presupuesto mínimo, conversación de 30 turnos con
   mensajes extensos (`answer` no vacío en todos), corte por `max_iterations`
@@ -271,12 +319,13 @@ ceros); si alguna reportó, se suma tratando los `None` individuales como 0.
   ventana dentro de `structured_call`, persistencia del intercambio limpio
   (y no de los intentos fallidos), reintentos de LLM y tools (transitorio vs.
   no transitorio, agotamiento), clasificador por código HTTP, tokens (`None`
-  si nadie reportó, reinicio por run).
-- Herramientas (`tests/test_tools.py`, +11 casos): mensajes accionables de
+  si nadie reportó, reinicio por run), y validación de la configuración
+  (contadores no enteros, demoras no finitas, `max_repair_attempts` negativo).
+- Herramientas (`tests/test_tools.py`, 34 casos): mensajes accionables de
   calculadora (parámetro y valor en el error, coerción de strings numéricos,
   booleanos, división por cero accionable) y del lector (regla violada
   nombrada, listado de disponibles ante inexistente, contenido ante
-  directorio).
+  directorio, y el contrato de "nunca lanza" ante rutas que el SO rechaza).
 - Criterios de aprobación del enunciado, uno a uno: conversación que supera el
   presupuesto y sigue comportándose correctamente ✓
   (`test_bounded_history_growth`, `test_conversacion_larga_siempre_devuelve_answer_no_vacio`);

@@ -394,6 +394,45 @@ def test_parametros_de_reintento_invalidos_fallan_al_construir():
         build_agent({"llm_client": mock, "max_iterations": 0})
 
 
+@pytest.mark.parametrize(
+    "clave, valor",
+    [
+        ("max_history_messages", 1.5),  # rompía recién en el 2do run, al slicear
+        ("max_history_messages", True),
+        ("max_iterations", 1.5),
+        ("max_retries", 1.5),
+    ],
+)
+def test_contadores_no_enteros_fallan_al_construir(clave: str, valor: object):
+    """Los contadores indexan listas y alimentan `range`: un float reventaría
+    más tarde y lejos de la causa, con el historial a medio escribir."""
+    mock = MockLLMClient([LLMResponse(content="x")])
+
+    with pytest.raises(ValueError, match=clave):
+        build_agent({"llm_client": mock, clave: valor})
+
+
+@pytest.mark.parametrize("valor", [float("nan"), float("inf")])
+def test_demora_no_finita_falla_al_construir(valor: float):
+    """NaN o infinito dejarían el backoff esperando para siempre."""
+    mock = MockLLMClient([LLMResponse(content="x")])
+
+    with pytest.raises(ValueError, match="retry_base_delay"):
+        build_agent({"llm_client": mock, "retry_base_delay": valor})
+
+
+def test_max_repair_attempts_negativo_falla_claro():
+    """Antes terminaba en 'agotó 0 intentos' sin haber llamado al LLM."""
+    mock = MockLLMClient([_final_result({"valor": 1, "comentario": "ok"})])
+    agent = build_agent({"llm_client": mock})
+
+    with pytest.raises(ValueError, match="max_repair_attempts"):
+        agent.structured_call(
+            prompt="dame un objeto", schema=Respuesta, max_repair_attempts=-1
+        )
+    assert mock.call_count == 0
+
+
 # ---------------------------------------------------------------------------
 # Resiliencia: reintentos ante fallos transitorios
 # ---------------------------------------------------------------------------

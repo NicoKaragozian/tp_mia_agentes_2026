@@ -36,14 +36,19 @@ def _resolver_dentro_de_base(ruta: str) -> Path | None:
     """Resuelve `ruta` contra el directorio base y verifica que no se escape.
 
     Devuelve la ruta resuelta si queda dentro de `_BASE_DIR`, o `None` si
-    intenta salir (p. ej. vía symlinks) o es una ruta absoluta externa.
-    Resolver ambos lados neutraliza `..` y symlinks antes de comparar.
+    intenta salir (p. ej. vía symlinks), es una ruta absoluta externa o el
+    sistema operativo no la puede resolver siquiera. Resolver ambos lados
+    neutraliza `..` y symlinks antes de comparar.
+
+    El `resolve()` puede lanzar ante rutas que Python acepta como string pero
+    el SO rechaza (nombre demasiado largo, por ejemplo). Como esta tool se
+    compromete a no lanzar nunca, esos casos se tratan como ruta inválida.
     """
-    base = _BASE_DIR.resolve()
-    candidata = (base / ruta).resolve()
     try:
+        base = _BASE_DIR.resolve()
+        candidata = (base / ruta).resolve()
         candidata.relative_to(base)
-    except ValueError:
+    except (ValueError, OSError):
         return None
     return candidata
 
@@ -89,6 +94,15 @@ def leer_archivo(
             "de datos permitido, por ejemplo 'notas.txt' o 'sub/archivo.txt'."
         )
     ruta = ruta.strip()
+    if "\x00" in ruta:
+        # JSON válido puede transportar un byte nulo, pero ningún sistema de archivos
+        # acepta un NUL en un nombre: se rechaza con su propio mensaje en
+        # lugar de dejar que `resolve()` lance.
+        return (
+            "Error: la ruta contiene un carácter nulo (\\u0000), que no es "
+            "válido en un nombre de archivo. Pasá una ruta de texto simple, "
+            "por ejemplo 'notas.txt'."
+        )
 
     # Reglas del sandbox, cada una con su mensaje (el orden importa: se
     # informa la regla más específica que se pueda determinar).

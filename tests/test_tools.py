@@ -191,6 +191,21 @@ def test_lector_ruta_vacia_explica_como_deberia_verse() -> None:
     assert "relativa" in out.lower()
 
 
+def test_lector_ruta_con_caracter_nulo_no_lanza() -> None:
+    # Un NUL escapado (\\u0000) es JSON válido, así que el LLM puede
+    # emitirlo; el SO no lo acepta y `resolve()` lanzaba ValueError,
+    # rompiendo el contrato de la tool ("nunca lanza: devuelve un mensaje").
+    out = leer_archivo("notas\x00.txt")
+    assert isinstance(out, str)
+    assert "nulo" in out.lower()
+
+
+def test_lector_nombre_absurdamente_largo_no_lanza() -> None:
+    out = leer_archivo("x" * 5000 + ".txt")
+    assert isinstance(out, str)
+    assert out.lower().startswith("error")
+
+
 def test_lector_ruta_absoluta_nombra_la_regla() -> None:
     out = leer_archivo("/etc/passwd")
     assert "absoluta" in out.lower()

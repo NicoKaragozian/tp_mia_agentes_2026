@@ -20,6 +20,7 @@ describen con precisión los comportamientos exigidos.
 from __future__ import annotations
 
 import json
+import math
 import time
 from typing import Any, Callable, TypeVar
 
@@ -94,6 +95,36 @@ def _es_error_transitorio(exc: Exception) -> bool:
     return any(marca in nombre for marca in _MARCAS_TRANSITORIAS)
 
 
+def _validar_entero(nombre: str, valor: Any, *, minimo: int, motivo: str = "") -> None:
+    """Exige un entero real >= `minimo`; si no, `ValueError` explicando por qué.
+
+    Los contadores del agente indexan listas y alimentan `range`: un float
+    (aunque sea 2.0) o un bool reventaría más tarde, lejos de la causa, y con
+    estado a medio escribir. Mejor fallar al construir.
+    """
+    if isinstance(valor, bool) or not isinstance(valor, int):
+        raise ValueError(
+            f"{nombre} debe ser un entero; recibí {valor!r} "
+            f"({type(valor).__name__})."
+        )
+    if valor < minimo:
+        raise ValueError(f"{nombre} debe ser >= {minimo}; recibí {valor!r}.{motivo}")
+
+
+def _validar_demora(nombre: str, valor: Any) -> None:
+    """Exige un número finito >= 0: `NaN`/`inf` colgarían el backoff."""
+    if isinstance(valor, bool) or not isinstance(valor, (int, float)):
+        raise ValueError(
+            f"{nombre} debe ser un número; recibí {valor!r} "
+            f"({type(valor).__name__})."
+        )
+    if not math.isfinite(valor) or valor < 0:
+        raise ValueError(
+            f"{nombre} debe ser un número finito >= 0; recibí {valor!r} "
+            f"(un valor infinito o NaN dejaría el backoff esperando para siempre)."
+        )
+
+
 class SalidaEstructuradaError(RuntimeError):
     """`structured_call` agotó los reintentos sin lograr una salida válida.
 
@@ -138,28 +169,24 @@ class MyAgent:
             reintentos: base, 2*base, 4*base, ... Con 0 no se duerme
             (útil en tests).
         """
-        # Validación de la configuración: un tope de 0 (o negativo) mensajes
-        # es CONTRADICTORIO con la invariante de recencia — no se puede a la
-        # vez "no enviar mensajes" y "que el último mensaje del usuario
-        # siempre aparezca". Ante una configuración imposible preferimos
-        # fallar acá, explícito, antes que violar un contrato en silencio.
-        if max_history_messages < 1:
-            raise ValueError(
-                "max_history_messages debe ser >= 1: con 0 mensajes no se "
-                "puede cumplir la invariante de recencia (el último mensaje "
-                f"del usuario siempre debe llegar al LLM); recibí "
-                f"{max_history_messages!r}."
-            )
-        if max_iterations < 1:
-            raise ValueError(
-                f"max_iterations debe ser >= 1; recibí {max_iterations!r}."
-            )
-        if max_retries < 0:
-            raise ValueError(f"max_retries debe ser >= 0; recibí {max_retries!r}.")
-        if retry_base_delay < 0:
-            raise ValueError(
-                f"retry_base_delay debe ser >= 0; recibí {retry_base_delay!r}."
-            )
+        # Validación de la configuración. El caso interesante es
+        # `max_history_messages`: un tope de 0 (o negativo) es CONTRADICTORIO
+        # con la invariante de recencia — no se puede a la vez "no enviar
+        # mensajes" y "que el último mensaje del usuario siempre aparezca".
+        # Ante una configuración imposible preferimos fallar acá, explícito,
+        # antes que violar un contrato en silencio.
+        _validar_entero(
+            "max_history_messages",
+            max_history_messages,
+            minimo=1,
+            motivo=(
+                " Con 0 mensajes no se puede cumplir la invariante de recencia"
+                " (el último mensaje del usuario siempre debe llegar al LLM)."
+            ),
+        )
+        _validar_entero("max_iterations", max_iterations, minimo=1)
+        _validar_entero("max_retries", max_retries, minimo=0)
+        _validar_demora("retry_base_delay", retry_base_delay)
 
         self._llm = llm_client
         self._system = system_prompt
@@ -478,6 +505,7 @@ class MyAgent:
         historial no se toca. La ventana (`_ventana`) aplica igual que en
         `run`: ninguna llamada supera `max_history_messages` mensajes.
         """
+        _validar_entero("max_repair_attempts", max_repair_attempts, minimo=0)
         tool_de_cierre = final_result_tool_schema(schema)
         # Lista de trabajo local: la conversación + el prompt + los
         # intercambios de reparación. Recién se persiste al tener éxito.
