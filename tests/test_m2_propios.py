@@ -314,6 +314,87 @@ def test_structured_call_fallido_no_toca_el_historial():
 
 
 # ---------------------------------------------------------------------------
+# Resiliencia del historial: answer nunca vacío
+# ---------------------------------------------------------------------------
+
+
+def test_conversacion_larga_siempre_devuelve_answer_no_vacio():
+    """Criterio del enunciado: decenas de turnos con mensajes extensos, y
+    cada run sigue devolviendo un AgentResult con answer no vacío."""
+    turnos = 30
+    largo = "detalle " * 200  # mensajes extensos, no de una línea
+    mock = MockLLMClient([LLMResponse(content=f"respuesta {i}") for i in range(turnos)])
+    agent = build_agent({"llm_client": mock, "max_history_messages": 8})
+
+    for i in range(turnos):
+        result = agent.run(f"turno {i}: {largo}")
+        assert result.answer, f"el turno {i} devolvió un answer vacío"
+        assert len(mock.calls[-1]["messages"]) <= 8
+
+
+def test_corte_por_max_iterations_devuelve_answer_informativo():
+    """Aun cortando por límite, `answer` no queda vacío: explica el corte y
+    qué herramientas se llegaron a usar (y `error` sigue seteado)."""
+    tool, schema = make_recording_tool()
+    mock = MockLLMClient(
+        [_tool_call(schema.name, call_id=f"c{i}") for i in range(3)]
+    )
+    agent = build_agent({"llm_client": mock, "max_iterations": 3})
+    agent.register_tool(tool, schema)
+
+    result = agent.run("entrá en loop")
+
+    assert result.answer, "answer no puede quedar vacío ni al cortar por límite"
+    assert schema.name in result.answer, "debería listar las tools usadas"
+    assert result.error is not None, "el corte debe seguir siendo detectable"
+    assert mock.call_count == 3
+
+
+def test_respuesta_vacia_del_modelo_no_propaga_answer_vacio():
+    """Si el LLM cierra con content vacío, devolvemos un texto de cierre."""
+    mock = MockLLMClient([LLMResponse(content=None)])
+    agent = build_agent({"llm_client": mock})
+
+    result = agent.run("hola")
+
+    assert result.answer, "content=None no debe convertirse en answer vacío"
+
+
+def test_content_con_texto_se_devuelve_exactamente():
+    """El contrato de M1 sigue intacto: si hay texto, va tal cual."""
+    mock = MockLLMClient([LLMResponse(content="La respuesta es 4.")])
+    agent = build_agent({"llm_client": mock})
+
+    assert agent.run("¿2+2?").answer == "La respuesta es 4."
+
+
+# ---------------------------------------------------------------------------
+# Validación de la configuración
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("tope", [0, -1])
+def test_tope_de_historial_invalido_falla_al_construir(tope: int):
+    """Un tope de 0 mensajes es incompatible con la invariante de recencia:
+    se rechaza en el constructor en vez de violar el contrato en silencio."""
+    mock = MockLLMClient([LLMResponse(content="x")])
+
+    with pytest.raises(ValueError, match="max_history_messages"):
+        build_agent({"llm_client": mock, "max_history_messages": tope})
+
+
+def test_parametros_de_reintento_invalidos_fallan_al_construir():
+    mock = MockLLMClient([LLMResponse(content="x")])
+
+    with pytest.raises(ValueError, match="max_retries"):
+        build_agent({"llm_client": mock, "max_retries": -1})
+    with pytest.raises(ValueError, match="retry_base_delay"):
+        build_agent({"llm_client": mock, "retry_base_delay": -0.5})
+    with pytest.raises(ValueError, match="max_iterations"):
+        build_agent({"llm_client": mock, "max_iterations": 0})
+
+
+# ---------------------------------------------------------------------------
 # Resiliencia: reintentos ante fallos transitorios
 # ---------------------------------------------------------------------------
 

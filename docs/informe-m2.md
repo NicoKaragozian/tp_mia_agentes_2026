@@ -46,12 +46,19 @@ estas prioridades:
    confundir al modelo, un `toolResult` sin su `toolUse` rompe el formato de
    la API Converse de Bedrock.)
 
-Dos decisiones complementarias:
+Tres decisiones complementarias:
 
 - **El system prompt y los esquemas de tools no gastan presupuesto:** viajan
   por los parámetros `system=` y `tools=` de `chat(...)`, fuera de la lista
   `messages`. Son estables turno a turno; recortarlos sería perder
   comportamiento, no memoria.
+- **`max_history_messages < 1` se rechaza en el constructor.** Un tope de 0 es
+  *contradictorio* con la invariante de recencia: no se puede a la vez "no
+  enviar mensajes" y "que el último mensaje del usuario siempre llegue al
+  LLM". Ante una configuración imposible, fallar explícito al construir es
+  preferible a violar en silencio uno de los dos contratos. (Por la misma
+  razón se validan `max_iterations >= 1`, `max_retries >= 0` y
+  `retry_base_delay >= 0`.)
 - **Qué se descarta:** el medio de la conversación (los turnos entre el ancla
   y la cola). Es el tramo con menor probabilidad de ser referido por el turno
   actual; lo reciente sostiene la continuidad y el ancla sostiene el objetivo.
@@ -75,6 +82,24 @@ Dos decisiones complementarias:
   ventana puede quedar reducida al último mensaje del usuario (sin los
   resultados de tools). El agente no se rompe y respeta el tope, pero el
   modelo puede repetir trabajo; lo documentamos como límite en la sección 4.
+- **El tope se podía violar con `max_history_messages = 0`.** El recorte
+  priorizaba la recencia y devolvía 1 mensaje, incumpliendo el tope duro. Es
+  el caso donde los dos contratos del enunciado son incompatibles entre sí;
+  se resolvió rechazando esa configuración en el constructor (ver arriba).
+
+### 1.4. Resiliencia del historial: `answer` nunca vacío
+
+El enunciado exige que, aun en conversaciones largas, cada `run` devuelva un
+`AgentResult` con `answer` no vacío. Hay dos caminos donde el vacío podía
+filtrarse, y los dos tienen ahora un cierre informativo:
+
+- **Corte por `max_iterations`:** en vez de `answer=""`, se devuelve un texto
+  que explica el corte y lista las herramientas que se llegaron a usar. El
+  campo `error` se mantiene, así que el corte sigue siendo detectable
+  programáticamente — el cambio es de cara al usuario, no del contrato.
+- **El modelo cierra con `content` vacío o `None`:** se devuelve un texto de
+  cierre indicando que el turno no produjo contenido. Cuando **sí** hay texto
+  se devuelve exactamente ese texto, que es lo que exige el contrato de M1.
 
 ---
 
@@ -206,7 +231,10 @@ ceros); si alguna reportó, se suma tratando los `None` individuales como 0.
   archivos inexistentes) → mensajes accionables realimentados al LLM.
 - Tool desconocida, JSON de argumentos inválido, excepción dentro de una tool
   → `AgentStep.error`, el bucle sigue (heredado de M1).
-- Bucles sin fin → `max_iterations` (heredado de M1).
+- Bucles sin fin → `max_iterations` (heredado de M1), con cierre informativo.
+- Respuestas degeneradas del modelo (contenido vacío) → texto de cierre en
+  lugar de `answer` vacío.
+- Configuración incoherente del agente → `ValueError` al construir.
 
 ### Fuera del alcance (decisiones explícitas)
 
@@ -214,7 +242,8 @@ ceros); si alguna reportó, se suma tratando los `None` individuales como 0.
   propaga al llamador; no inventamos una respuesta sin modelo.
 - **Presupuestos extremos:** con `max_history_messages` menor que un grupo
   `assistant + tools`, la ventana degrada a "solo el último user" y el modelo
-  puede repetir tool calls. Se respeta el tope, no la eficiencia.
+  puede repetir tool calls. Se respeta el tope, no la eficiencia. Con un tope
+  de 0 los contratos son incompatibles y el agente no se construye.
 - **El ancla es el primer mensaje:** si el objetivo del usuario cambia a mitad
   de una conversación larga, el ancla puede quedar desactualizada (limitación
   conocida del recorte con `preserve_first_user`).
@@ -230,24 +259,29 @@ ceros); si alguna reportó, se suma tratando los `None` individuales como 0.
 ## Verificación
 
 - Suite completa: `python -m pytest tests/ --ignore=tests/conformance/test_m3_world.py`
-  → **105/105 en verde** con `MockLLMClient` (sin claves de API).
+  → **112/112 en verde** con `MockLLMClient` (sin claves de API).
 - Conformidad: `test_m1.py` **5/5** (el cierre de `run` sigue siendo el de M1)
   y `test_m2.py` **7/7**. Archivos FIJOS sin modificar.
-- Tests propios de M2 (`tests/test_m2_propios.py`, 19 casos): tope y
+- Tests propios de M2 (`tests/test_m2_propios.py`, 26 casos): tope y
   coherencia de la ventana con tools en el medio, invariante de recencia
-  dentro de un run, ancla, presupuesto mínimo, reparación de texto
-  libre / JSON roto / tool alucinada, ventana dentro de `structured_call`,
-  persistencia del intercambio limpio (y no de los intentos fallidos),
-  reintentos de LLM y tools (transitorio vs. no transitorio, agotamiento),
-  clasificador por código HTTP, tokens (`None` si nadie reportó, reinicio
-  por run).
+  dentro de un run, ancla, presupuesto mínimo, conversación de 30 turnos con
+  mensajes extensos (`answer` no vacío en todos), corte por `max_iterations`
+  con cierre informativo, respuesta vacía del modelo, validación de la
+  configuración, reparación de texto libre / JSON roto / tool alucinada,
+  ventana dentro de `structured_call`, persistencia del intercambio limpio
+  (y no de los intentos fallidos), reintentos de LLM y tools (transitorio vs.
+  no transitorio, agotamiento), clasificador por código HTTP, tokens (`None`
+  si nadie reportó, reinicio por run).
 - Herramientas (`tests/test_tools.py`, +11 casos): mensajes accionables de
   calculadora (parámetro y valor en el error, coerción de strings numéricos,
   booleanos, división por cero accionable) y del lector (regla violada
   nombrada, listado de disponibles ante inexistente, contenido ante
   directorio).
 - Criterios de aprobación del enunciado, uno a uno: conversación que supera el
-  presupuesto ✓ (`test_bounded_history_growth` + propios), prompt estructurado
-  roto que se repara o falla limpio ✓, fallo transitorio simulado que se
-  reintenta y termina bien ✓ (`test_timeout_del_llm_se_reintenta...`),
-  mensajes claros de calculadora y lector ✓, tokens correctos ✓, informe ✓.
+  presupuesto y sigue comportándose correctamente ✓
+  (`test_bounded_history_growth`, `test_conversacion_larga_siempre_devuelve_answer_no_vacio`);
+  prompt estructurado roto que se repara o falla limpio ✓ (los tres modos de
+  fallo + `SalidaEstructuradaError`); fallo transitorio simulado que se
+  reintenta y termina bien ✓ (`test_timeout_del_llm_se_reintenta...`);
+  mensajes claros y accionables de calculadora y lector ✓ (11 casos en
+  `tests/test_tools.py`); tokens correctos ✓; informe con las cuatro secciones ✓.

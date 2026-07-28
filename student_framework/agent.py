@@ -138,6 +138,29 @@ class MyAgent:
             reintentos: base, 2*base, 4*base, ... Con 0 no se duerme
             (útil en tests).
         """
+        # Validación de la configuración: un tope de 0 (o negativo) mensajes
+        # es CONTRADICTORIO con la invariante de recencia — no se puede a la
+        # vez "no enviar mensajes" y "que el último mensaje del usuario
+        # siempre aparezca". Ante una configuración imposible preferimos
+        # fallar acá, explícito, antes que violar un contrato en silencio.
+        if max_history_messages < 1:
+            raise ValueError(
+                "max_history_messages debe ser >= 1: con 0 mensajes no se "
+                "puede cumplir la invariante de recencia (el último mensaje "
+                f"del usuario siempre debe llegar al LLM); recibí "
+                f"{max_history_messages!r}."
+            )
+        if max_iterations < 1:
+            raise ValueError(
+                f"max_iterations debe ser >= 1; recibí {max_iterations!r}."
+            )
+        if max_retries < 0:
+            raise ValueError(f"max_retries debe ser >= 0; recibí {max_retries!r}.")
+        if retry_base_delay < 0:
+            raise ValueError(
+                f"retry_base_delay debe ser >= 0; recibí {retry_base_delay!r}."
+            )
+
         self._llm = llm_client
         self._system = system_prompt
         self._max_iterations = max_iterations
@@ -227,6 +250,15 @@ class MyAgent:
             # `run` la vean como parte de la conversación.
             if not response.tool_calls:
                 answer = response.content or ""
+                if not answer.strip():
+                    # El modelo cerró con contenido vacío. M2 exige que `run`
+                    # nunca devuelva un `answer` vacío, así que reportamos el
+                    # hecho en vez de propagar el vacío. Cuando SÍ hay texto
+                    # se devuelve exactamente ese texto (contrato de M1).
+                    answer = (
+                        "El modelo terminó el turno sin devolver contenido. "
+                        "Reformulá la consulta o volvé a intentarlo."
+                    )
                 self._history.append({"role": "assistant", "content": answer})
                 return AgentResult(
                     answer=answer,
@@ -259,9 +291,19 @@ class MyAgent:
                 )
 
         # Se agotó `max_iterations` sin una respuesta de texto final. Aun así
-        # devolvemos un `AgentResult` válido, con `error` indicando el corte.
+        # devolvemos un `AgentResult` válido. `answer` no queda vacío (M2 lo
+        # exige): explica el corte y qué se alcanzó a hacer, mientras `error`
+        # sigue permitiendo detectarlo programáticamente.
+        usadas = list(dict.fromkeys(s.tool_name for s in steps if s.tool_name))
+        detalle = ", ".join(usadas) if usadas else "ninguna"
+        respuesta_parcial = (
+            f"No llegué a una respuesta final: alcancé el límite de "
+            f"{self._max_iterations} iteraciones. Herramientas utilizadas: "
+            f"{detalle}."
+        )
+        self._history.append({"role": "assistant", "content": respuesta_parcial})
         return AgentResult(
-            answer="",
+            answer=respuesta_parcial,
             steps=steps,
             error=f"Se alcanzó el máximo de iteraciones ({self._max_iterations}).",
             input_tokens=tokens_entrada if alguien_reporto else None,
