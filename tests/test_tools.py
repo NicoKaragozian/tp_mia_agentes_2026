@@ -64,6 +64,43 @@ def test_calculadora_operador_con_espacios() -> None:
     assert calculadora(2, 2, " + ") == "4"
 
 
+def test_calculadora_operando_no_numerico_nombra_parametro_y_valor() -> None:
+    out = calculadora("cuarenta y dos", 2, "+")
+    assert "operando_a" in out
+    assert "cuarenta y dos" in out
+    assert "número" in out.lower()
+
+
+def test_calculadora_segundo_operando_no_numerico() -> None:
+    out = calculadora(1, None, "+")
+    assert "operando_b" in out
+    assert "None" in out
+
+
+def test_calculadora_rechaza_booleanos() -> None:
+    out = calculadora(True, 2, "+")
+    assert "operando_a" in out
+    assert "booleano" in out.lower()
+
+
+def test_calculadora_coerciona_strings_numericos() -> None:
+    # El LLM a veces manda los números como texto: no vale la pena rebotarlo.
+    assert calculadora("7", "2", "/") == "3.5"
+    assert calculadora(" 10 ", 4, "-") == "6"
+
+
+def test_calculadora_operador_invalido_lista_los_permitidos() -> None:
+    out = calculadora(1, 2, "^")
+    for op in ("+", "-", "*", "%", "/"):
+        assert op in out
+
+
+def test_calculadora_division_por_cero_es_accionable() -> None:
+    out = calculadora(1, 0, "/")
+    assert "operando_b" in out
+    assert "distinto de 0" in out
+
+
 def test_calculadora_schema() -> None:
     props = calculadora_schema.parameters["properties"]
     assert set(props) == {"operando_a", "operando_b", "operador"}
@@ -146,6 +183,62 @@ def test_lector_archivo_supera_limite() -> None:
         assert "límite" in out.lower()
     finally:
         ruta.unlink(missing_ok=True)
+
+
+def test_lector_ruta_vacia_explica_como_deberia_verse() -> None:
+    out = leer_archivo("   ")
+    assert "vacía" in out.lower()
+    assert "relativa" in out.lower()
+
+
+def test_lector_ruta_con_caracter_nulo_no_lanza() -> None:
+    # Un NUL escapado (\\u0000) es JSON válido, así que el LLM puede
+    # emitirlo; el SO no lo acepta y `resolve()` lanzaba ValueError,
+    # rompiendo el contrato de la tool ("nunca lanza: devuelve un mensaje").
+    out = leer_archivo("notas\x00.txt")
+    assert isinstance(out, str)
+    assert "nulo" in out.lower()
+
+
+def test_lector_nombre_absurdamente_largo_no_lanza() -> None:
+    out = leer_archivo("x" * 5000 + ".txt")
+    assert isinstance(out, str)
+    assert out.lower().startswith("error")
+
+
+def test_lector_ruta_absoluta_nombra_la_regla() -> None:
+    out = leer_archivo("/etc/passwd")
+    assert "absoluta" in out.lower()
+    assert "relativa" in out.lower()
+
+
+def test_lector_ruta_con_puntos_nombra_la_regla() -> None:
+    out = leer_archivo("../CLAUDE.md")
+    assert "'..'" in out
+
+
+def test_lector_inexistente_lista_los_disponibles(
+    archivo_en_sandbox: tuple[str, str],
+) -> None:
+    nombre, _ = archivo_en_sandbox
+    out = leer_archivo("no_existe_12345.txt")
+    assert "no existe" in out.lower()
+    assert nombre in out, "el error debería listar los archivos disponibles"
+
+
+def test_lector_directorio_lista_su_contenido() -> None:
+    _BASE_DIR.mkdir(parents=True, exist_ok=True)
+    sub = _BASE_DIR / f"_dir_{uuid.uuid4().hex}"
+    sub.mkdir()
+    adentro = sub / "adentro.txt"
+    adentro.write_text("x", encoding="utf-8")
+    try:
+        out = leer_archivo(sub.name)
+        assert "directorio" in out.lower()
+        assert "adentro.txt" in out
+    finally:
+        adentro.unlink()
+        sub.rmdir()
 
 
 def test_lector_schema() -> None:

@@ -31,8 +31,17 @@ def build_agent(config: dict[str, Any] | None = None) -> Agent:
     llm = config.get("llm_client") or LLMClient.from_env() #NO CAMBIAR
     kwargs: dict[str, Any] = {"llm_client": llm} #NO CAMBIAR
     
-    if "max_history_messages" in config:
-        kwargs["max_history_messages"] = config["max_history_messages"]
+    # Parámetros opcionales del agente: se rutean solo si vienen en config,
+    # así los defaults viven en un único lugar (el constructor de MyAgent).
+    for clave in (
+        "system_prompt",
+        "max_iterations",
+        "max_history_messages",
+        "max_retries",
+        "retry_base_delay",
+    ):
+        if clave in config:
+            kwargs[clave] = config[clave]
 
     agent = MyAgent(**kwargs)
 
