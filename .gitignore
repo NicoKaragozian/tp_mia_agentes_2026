@@ -7,3 +7,6 @@
 docs/plan-*.md
 # Orquestación interna del equipo (no se entrega)
 docs/README.md
+
+# Trazas crudas de la evaluación (se regeneran con `python eval/run.py`)
+eval/results/
