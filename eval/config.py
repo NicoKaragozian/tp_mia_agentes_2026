@@ -104,3 +104,31 @@ EXPERIMENTOS: dict[str, list[Condicion]] = {
     "e1-memoria": E1_MEMORIA,
     "e2-prompt": E2_PROMPT,
 }
+
+
+#: Hipótesis de cada experimento, escritas ANTES de correrlos (quedan en el
+#: historial de git en un commit anterior al de los resultados). Un
+#: experimento cuya hipótesis se refuta enseña más que uno amañado.
+HIPOTESIS: dict[str, str] = {
+    "e1-memoria": (
+        "El modo de fallo dominante del baseline es el bucle: el agente "
+        "reinvoca acciones que ya ejecutó (51% de las llamadas en el piloto, "
+        "hasta 88% en vault-combination). Si repetir se debe a que el agente "
+        "no VE en su contexto que ya hizo esa acción, entonces recortar la "
+        "ventana debería empeorarlo de forma monótona: esperamos que al bajar "
+        "max_history_messages de 50 a 8 y a 4 suba la fracción de llamadas "
+        "repetidas y baje la tasa de éxito. Refutaría la hipótesis que la "
+        "repetición no cambie (el bucle vendría de la política del modelo, no "
+        "de la memoria) o que una ventana más chica ayude (menos contexto, "
+        "menos distracción)."
+    ),
+    "e2-prompt": (
+        "El prompt genérico del framework produce conducta de asistente "
+        "conversacional, no de agente: en las pruebas manuales el modelo hizo "
+        "un look y le preguntó al usuario qué hacer, terminando el bucle con "
+        "la puerta cerrada. Esperamos que el prompt especializado suba la "
+        "tasa de éxito y reduzca las paradas prematuras. Refutaría la "
+        "hipótesis que la diferencia sea nula, lo que indicaría que el cuello "
+        "de botella es la capacidad del modelo y no la instrucción."
+    ),
+}
