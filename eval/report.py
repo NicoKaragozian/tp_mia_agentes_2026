@@ -66,6 +66,7 @@ def render_markdown(resumen: dict[str, Any], trazas: list[dict[str, Any]]) -> st
                 ["pasos medios", str(g["pasos_medios"])],
                 ["llamadas al LLM medias", str(g["llamadas_llm_medias"])],
                 ["tokens entrada / salida", f"{g['tokens_entrada_medios']} / {g['tokens_salida_medios']}"],
+                ["latencia mediana", f"{g['latencia_mediana_s']} s"],
                 ["latencia media", f"{g['latencia_media_s']} s"],
             ],
         ),

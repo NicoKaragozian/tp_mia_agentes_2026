@@ -28,6 +28,19 @@ def _media(valores: Iterable[float]) -> float:
     return statistics.fmean(datos) if datos else 0.0
 
 
+def _mediana(valores: Iterable[float]) -> float:
+    """Mediana: resistente a corridas atípicas.
+
+    Hace falta: una corrida quedó registrada en 6207 s (la máquina estuvo
+    inactiva mientras la evaluación corría desatendida) contra una mediana
+    de 12 s. Esa única observación multiplicaba por 30 la media de su
+    condición. La latencia se reporta por mediana; la media queda a la
+    vista para que la diferencia entre ambas delate estos casos.
+    """
+    datos = [v for v in valores if v is not None]
+    return statistics.median(datos) if datos else 0.0
+
+
 @dataclass
 class Resumen:
     """Métricas agregadas de un grupo de corridas."""
@@ -42,6 +55,7 @@ class Resumen:
     tokens_entrada_medios: float
     tokens_salida_medios: float
     latencia_media_s: float
+    latencia_mediana_s: float
 
     def como_dict(self) -> dict[str, Any]:
         return {
@@ -55,6 +69,7 @@ class Resumen:
             "tokens_entrada_medios": round(self.tokens_entrada_medios),
             "tokens_salida_medios": round(self.tokens_salida_medios),
             "latencia_media_s": round(self.latencia_media_s, 1),
+            "latencia_mediana_s": round(self.latencia_mediana_s, 1),
         }
 
 
@@ -91,6 +106,7 @@ def resumir(trazas: list[dict[str, Any]]) -> Resumen:
         tokens_entrada_medios=_media(t.get("input_tokens") or 0 for t in trazas),
         tokens_salida_medios=_media(t.get("output_tokens") or 0 for t in trazas),
         latencia_media_s=_media(t.get("latencia_s") or 0.0 for t in trazas),
+        latencia_mediana_s=_mediana(t.get("latencia_s") or 0.0 for t in trazas),
     )
 
 

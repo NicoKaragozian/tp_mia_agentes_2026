@@ -188,3 +188,321 @@ completo, que crecería de forma cuadrática al acumularse turno a turno.
 La propia infraestructura está testeada (`tests/test_eval.py`, 27 casos con
 trazas sintéticas): si la taxonomía clasificara mal, todas las afirmaciones de
 la sección 3 quedarían viciadas.
+
+---
+
+## 3. Resultados
+
+Modelo: `llama3.1:8b` sobre Ollama local. Baseline = 32 corridas (los 8
+escenarios × 2 repeticiones, agrupando las corridas de baseline de ambos
+experimentos, que comparten configuración).
+
+### 3.1. Números principales
+
+| Métrica | Valor |
+|---|---|
+| Tasa de éxito | **25 %** (8/32) |
+| Eficiencia media (sobre éxitos) | 0.43 |
+| Fracción de llamadas repetidas | 27 % |
+| Pasos medios | 18.7 |
+| Tokens de entrada / salida por corrida | 33 927 / 399 |
+| Latencia mediana | 14 s |
+
+### 3.2. Desglose por dificultad
+
+| Dificultad | Éxito | Repetidas |
+|---|---|---|
+| easy | **100 %** (4/4) | 0 % |
+| medium | 50 % (4/8) | 40 % |
+| hard | 0 % (0/8) | 18 % |
+| extreme | 0 % (0/12) | 33 % |
+
+### 3.3. Desglose por escenario
+
+| Escenario | Óptimo | Éxito | Pasos | Repetidas | Modo de fallo |
+|---|---:|---|---:|---:|---|
+| study-with-key | 3 | 4/4 | 7.8 | 0 % | — |
+| color-locks | 11 | 4/4 | 23.2 | 23 % | — |
+| apartment-keys | 7 | 0/4 | 20.8 | 58 % | bucle, argumentos_invalidos |
+| library-search | 7 | 0/4 | 22.0 | 36 % | bucle, accion_invalida |
+| office-sequence | 13 | 0/4 | 1.0 | 0 % | tool_call_en_texto |
+| extreme-archive | 4 | 0/4 | 2.0 | 0 % | tool_call_en_texto |
+| vault-combination | 21 | 0/4 | 50.0 | 73 % | bucle |
+| backtracking-vault | 18 | 0/4 | 22.5 | 26 % | bucle, parada_prematura |
+
+Lo más informativo de esta tabla no son los promedios sino su **consistencia**:
+cada escenario da 4/4 o 0/4, nunca 2/4. El agente no es errático — tiene un
+techo nítido. Resuelve `easy` siempre, resuelve `color-locks` (11 llamadas
+óptimas, cadena de cofres en una sola sala) siempre, y a partir de ahí no
+resuelve nada. El salto que no cruza es la **navegación multi-sala**:
+`apartment-keys` es *medium* y tiene menos llamadas óptimas que `color-locks`
+(7 contra 11), pero exige recordar el mapa, ir a otra sala y volver. Ahí falla
+sistemáticamente. La dificultad que frena a este agente no es la longitud de
+la cadena: es tener que sostener un modelo del espacio.
+
+### 3.4. Análisis de errores
+
+Modo de fallo principal de las 24 corridas fallidas del baseline:
+
+| Modo | Corridas |
+|---|---:|
+| bucle | 11 |
+| tool_call_en_texto | 8 |
+| accion_invalida | 2 |
+| parada_prematura | 2 |
+| argumentos_invalidos | 1 |
+
+**`bucle` (11/24).** El agente reinvoca acciones que ya ejecutó hasta agotar
+el presupuesto. El caso extremo es `vault-combination`: 73 % de sus llamadas
+son repeticiones. Una traza de `color-locks` con ventana recortada muestra el
+patrón en su forma más pura — un ciclo de dos pasos, `examine(llave_plateada)`
+→ error, `examine(puerta_principal)` → ok, repetido doce veces seguidas. El
+agente no está eligiendo mal: está eligiendo **sin ver que ya eligió eso**.
+
+**`tool_call_en_texto` (8/24).** El modelo escribe la llamada como texto plano
+—literalmente `{"name": "look"}`— en vez de emitirla por la API de
+tool-calling. Como la condición de parada del bucle es "texto sin
+`tool_calls`", eso termina la corrida. Es el modo que fulmina `office-sequence`
+y `extreme-archive`, ambos 4/4 con apenas 1 o 2 pasos.
+
+Vale precisar qué **no** lo causa: revisamos los tokens de esas corridas y
+están en ~1000, muy por debajo del techo de 16 384 de la ventana de contexto.
+No es desborde. Lo que sí observamos es que el 86 % de las corridas con este
+modo terminan justo después de una acción fallida, contra un 68 % en el resto
+de las fallidas. Es una correlación sugestiva, no una causa demostrada: con
+este tamaño de muestra la diferencia no alcanza para afirmar que el error
+previo lo provoca.
+
+Decidimos **no** tolerar este formato (parsear el texto y ejecutarlo igual),
+aunque es una técnica habitual. Modificar la condición de parada tocaría un
+contrato de M1 verificado por los tests de conformidad, y M3 es un milestone
+de medición: preferimos que el modo de fallo quede medido y explicado antes
+que tapado. Queda anotado en la sección 5 como lo primero a construir.
+
+### 3.5. Rúbrica cualitativa, y por qué contradice a la métrica dura
+
+El juez puntuó las 48 corridas de E1 **sin un solo fallo de formato**: 48/48
+devolvieron un `Veredicto` válido. Es, de paso, la mejor evidencia de que el
+mecanismo de `final_result` + reparación de M2 funciona en producción y no
+solo en los tests.
+
+Sobre el conjunto completo, el juez discrimina bien:
+
+| Grupo | Coherencia | Recuperación | Exploración |
+|---|---:|---:|---:|
+| Corridas que lograron la meta (n=4) | 4.00 | 3.50 | 4.50 |
+| Corridas fallidas (n=44) | 2.64 | 1.82 | 2.70 |
+
+Pero al comparar **condiciones** aparece una inversión incómoda: la condición
+que resuelve el 0 % recibe mejores notas que la que resuelve el 25 %. Mirando
+solo corridas fallidas, para aislar el efecto:
+
+| Condición (solo fallidas) | Coherencia | Recuperación | Exploración | Repetidas | Pasos |
+|---|---:|---:|---:|---:|---:|
+| baseline (50) | 1.83 | 1.42 | 2.08 | 37 % | 22.6 |
+| memoria_ajustada (8) | 2.50 | 1.50 | 2.62 | 21 % | 12.8 |
+| memoria_minima (4) | **3.38** | **2.44** | **3.25** | 15 % | 6.0 |
+
+La nota sigue casi exactamente a la tasa de repetición. Y eso es coherente: el
+juez puntúa lo que le pedimos —coherencia del plan, recuperación ante errores,
+redundancia de la exploración—, tres dimensiones de **calidad de conducta**.
+Una traza que se desarma a los seis pasos simplemente exhibe menos mala
+conducta observable que una que da vueltas veintidós veces.
+
+O sea que el juez no está equivocado: **la rúbrica está incompleta**. Le falta
+una dimensión de *avance hacia el objetivo* que penalice rendirse temprano, no
+solo insistir mal. Descartamos ajustarla después de ver los resultados —sería
+elegir la métrica que confirma la conclusión que ya sacamos—; queda anotado
+como corrección para la próxima iteración.
+
+La lección metodológica es la que importa: una métrica cualitativa mide lo que
+su rúbrica define, no lo que uno espera que mida. Contrastarla contra una
+métrica dura e independiente (`check_goal` sobre el estado del mundo) es lo que
+permitió detectar el desacople. Con el juez solo, habríamos concluido que
+recortar la memoria mejora al agente.
+
+---
+
+## 4. Experimentos
+
+Las hipótesis de ambos experimentos se escribieron y commitearon **antes** de
+ejecutarlos (`eval/config.py::HIPOTESIS`, commit `fe13512`, anterior al de los
+resultados), junto con qué observación las refutaría.
+
+### 4.1. E1 — Presupuesto de memoria
+
+Se varía `max_history_messages` manteniendo todo lo demás fijo. 16 corridas
+por condición.
+
+| Condición | Ventana | Éxito | Repetidas | Pasos | Tokens entrada | Latencia mediana |
+|---|---:|---|---:|---:|---:|---:|
+| baseline | 50 | **25 %** (4/16) | 31 % | 20.8 | 38 535 | 21 s |
+| memoria_ajustada | 8 | 0 % (0/16) | 21 % | 12.8 | 12 023 | 12 s |
+| memoria_minima | 4 | 0 % (0/16) | 15 % | 6.0 | 5 236 | 6 s |
+
+**Hipótesis: parcialmente refutada — y el modo en que falla es el hallazgo.**
+
+Acertamos la dirección: recortar la ventana degrada el desempeño de forma
+monótona, y basta bajar de 50 a 8 mensajes para que la tasa de éxito caiga a
+cero. Pero predijimos que el mecanismo sería **más repetición**, y los datos
+dicen lo contrario: la fracción de llamadas repetidas **baja** con la ventana
+(31 % → 21 % → 15 %).
+
+La explicación está en los pasos: 20.8 → 12.8 → 6.0. Con la ventana chica el
+agente no repite más, **colapsa antes**, así que ni llega a tener oportunidad
+de repetirse. Y el modo de fallo cambia de naturaleza:
+
+| Condición | bucle | tool_call_en_texto |
+|---|---:|---:|
+| baseline (50) | 7 | 4 |
+| memoria_ajustada (8) | 3 | 13 |
+| memoria_minima (4) | 2 | 14 |
+
+Con memoria amplia el agente fracasa *actuando* (da vueltas); con memoria
+mínima fracasa *desarmándose* (deja de emitir tool calls y escribe texto).
+
+La instrumentación muestra por qué. Registrando cuántos mensajes recibe el
+modelo en cada llamada de un mismo escenario:
+
+- **baseline**: 1 → 3 → 5 → 7 → 9 → 11 → 13 → 15 → 17 (crece; resuelve)
+- **memoria_ajustada**: 1 → 3 → 5 → 7 → 7 → 7 → 7 (se estanca)
+- **memoria_minima**: 1 → 3 → 3 (apenas un intercambio)
+
+Con tres mensajes por llamada, el agente ve `[objetivo, acción, resultado]` y
+nada más: no tiene visión de su propia trayectoria. Perder la traza de la
+conversación no solo le borra lo que hizo — le borra también el patrón de que
+está en un bucle de herramientas, y el modelo retrocede a describir la acción
+en prosa en lugar de invocarla.
+
+(Detalle de implementación visible en esos números: las ventanas se estabilizan
+en 7 y 3, no en 8 y 4. Es el recorte de M2 descartando un resultado de
+herramienta que quedó sin su `tool_call`, para no enviar pares rotos. Quedar
+por debajo del tope es válido; superarlo, no.)
+
+**Lectura de costos.** La ventana mínima consume 7× menos tokens de entrada y
+es 3.5× más rápida. Como optimización de costo funciona perfecto; como
+configuración de producto resuelve el 0 % de las tareas. Es el argumento más
+claro a favor del trabajo de M2: la gestión de contexto no es gratis, pero
+recortarla de más no es "un poco peor", es binariamente peor.
+
+### 4.2. E2 — System prompt especializado
+
+Se varía únicamente el `system_prompt`. 16 corridas por condición.
+
+| Condición | Éxito | Repetidas | Pasos | Latencia mediana |
+|---|---|---:|---:|---:|
+| prompt_generico | 0 % (0/16) | 44 % | 22.3 | 12 s |
+| baseline (especializado) | **25 %** (4/16) | 23 % | 16.5 | 14 s |
+
+**Hipótesis: confirmada en el resultado, refutada en el mecanismo.**
+
+El prompt especializado es la diferencia entre resolver algo y no resolver
+nada: 25 % contra 0 %. Y casi duplica la disciplina — la fracción de llamadas
+repetidas baja de 44 % a 23 %.
+
+Pero habíamos predicho que el prompt genérico fallaría por **paradas
+prematuras** (el modelo preguntándole al usuario qué hacer, como pasó en las
+pruebas manuales). No fue así:
+
+| Condición | bucle | accion_invalida | tool_call_en_texto | parada_prematura |
+|---|---:|---:|---:|---:|
+| prompt_generico | 9 | 7 | 0 | 0 |
+| baseline | 4 | 2 | 4 | 2 |
+
+Con presupuesto de iteraciones amplio, el prompt genérico no se rinde: da
+vueltas (bucle) e insiste con acciones que el mundo rechaza
+(`accion_invalida`). La parada prematura que habíamos visto a mano aparecía
+porque aquellas pruebas corrían con presupuestos chicos. Es un recordatorio
+metodológico útil: **una observación anecdótica sugiere una hipótesis, no la
+confirma**, y el experimento controlado la corrigió.
+
+Un detalle contraintuitivo: el prompt genérico consume **menos** tokens de
+entrada (16 613 contra 29 320). No es una virtud — refleja que sus corridas
+mueren antes y con contextos más chicos. Mide fracaso, no eficiencia; por eso
+el costo nunca se lee sin la tasa de éxito al lado.
+
+---
+
+## 5. Limitaciones y qué construiríamos a continuación
+
+### 5.1. Limitaciones de la evaluación
+
+**El modelo es el techo más probable, y no lo aislamos.** Todo se corrió con
+`llama3.1:8b` local. Los experimentos muestran que el prompt y la memoria
+mueven el resultado, pero no permiten separar "nuestro framework se queda
+corto" de "el modelo se queda corto". El propio andamiaje sugiere un
+experimento que no hicimos —comparar `nova-micro` contra `nova-lite`— y con
+credenciales de Bedrock sería cambiar una variable de entorno, porque el
+harness elige proveedor desde el entorno y nada en `eval/` supone Ollama.
+
+**El juez comparte modelo con el evaluado.** Un modelo chico puntuando sus
+propias trazas es un juez ruidoso y probablemente sesgado. Sus notas se leen
+como señal comparativa entre condiciones, no como medición absoluta.
+
+**La rúbrica del juez está incompleta** (sección 3.5). Sus tres dimensiones
+miden calidad de conducta y ninguna mide avance hacia el objetivo, así que
+premia a la condición que falla rápido y limpio por encima de la que insiste
+mal. No la corregimos post-hoc a propósito: cambiar la métrica después de ver
+los resultados es elegir la que confirma la conclusión deseada.
+
+**Dos repeticiones por celda.** Es poco para un sistema estocástico. Lo
+atenúa la consistencia observada —los escenarios dan 4/4 o 0/4, nunca
+resultados partidos—, pero no alcanza para poner intervalos de confianza sobre
+las diferencias. Tampoco controlamos la temperatura: se usó la del protocolo
+(0.2) en todas las condiciones.
+
+**Una corrida quedó contaminada por el entorno.** Un caso registró 6 207 s
+frente a una mediana de 12 s: la máquina estuvo inactiva mientras la
+evaluación corría desatendida. No afecta la corrección de la corrida (los
+pasos y la meta son válidos), pero destruía la media de latencia de su
+condición. Por eso la latencia se reporta por **mediana**, con la media a la
+vista para que la discrepancia entre ambas delate estos casos.
+
+**El presupuesto de iteraciones es una decisión nuestra que afecta los
+resultados.** `2 × óptimo + 8` es defendible pero arbitrario en el margen. Con
+presupuestos chicos habríamos visto más paradas prematuras y menos bucles: de
+hecho eso explica la discrepancia entre nuestras pruebas manuales y E2.
+
+### 5.2. Qué construiríamos a continuación
+
+**1. Tolerar la tool call escrita como texto.** Es el arreglo con mejor
+relación esfuerzo/beneficio: hoy explica 8 de las 24 corridas fallidas del
+baseline, y fulmina dos escenarios completos en 1 o 2 pasos. Si el `content`
+tiene la forma de una llamada, parsearlo y ejecutarlo en lugar de terminar el
+bucle. Lo dejamos afuera a propósito —cambia una condición de parada que los
+tests de conformidad verifican— así que iría detrás de un flag, apagado por
+defecto, y medido como un experimento más en vez de asumido.
+
+**2. Memoria episódica de acciones ya ejecutadas.** El bucle es el modo de
+fallo dominante (11 de 24) y su causa es visible: el agente reinvoca lo que ya
+hizo porque no lo ve. En vez de agrandar la ventana —que cuesta tokens
+linealmente y choca con el techo de contexto— mantener un registro compacto de
+`(herramienta, argumentos) → resultado` e inyectarlo en el system prompt, que
+queda **fuera** del presupuesto de la ventana deslizante. Es la jerarquía de
+memoria episódica que se discutió en clase, separando lo que el usuario pidió
+de las herramientas que se ejecutaron, y ataca directamente el 46 % de
+nuestros fracasos.
+
+**3. Un planificador explícito para las metas ordenadas.** `office-sequence`
+exige conseguir un documento *antes* de abrir la puerta. Un agente puramente
+reactivo no tiene por qué respetar un orden que nadie le hizo explícito;
+descomponer la meta en sub-objetivos y verificarlos en secuencia es el
+experimento natural de "planner contra ReAct puro" que el enunciado sugiere.
+
+**4. Un juez más fuerte y más repeticiones.** Con un modelo grande como juez y
+5 repeticiones por celda, las diferencias entre condiciones admitirían un test
+estadístico en vez de una lectura cualitativa.
+
+### 5.3. Lo que este milestone nos enseñó sobre los dos anteriores
+
+El hallazgo más útil de M3 no fue un número sino un bug: nuestro despacho de
+herramientas devolvía excepciones crudas de Python cuando el modelo erraba el
+nombre de un parámetro, sin decirle cuál era el correcto. El agente quedaba
+adivinando hasta agotar el presupuesto.
+
+Los 210 tests de M1 y M2 pasaban antes y después del arreglo, porque
+`MockLLMClient` siempre invoca las herramientas con los nombres correctos. Un
+mock solo comete los errores que uno le programa; un modelo real comete los
+que se le ocurren. Esa es, en una frase, la razón por la que un milestone de
+evaluación sobre un problema real no es un adorno sobre M1 y M2: es lo que
+descubre lo que los tests no podían ver.
