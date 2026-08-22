@@ -32,6 +32,8 @@ from eval.config import (  # noqa: E402
     EXPERIMENTOS,
     ORDEN_ESCENARIOS,
 )
+from eval.judge import juzgar  # noqa: E402
+from eval.report import escribir  # noqa: E402
 from eval.runner import ejecutar_caso  # noqa: E402
 
 
@@ -79,6 +81,11 @@ def _parser() -> argparse.ArgumentParser:
         "--smoke",
         action="store_true",
         help="Corrida mínima de humo: escenario fácil, 1 repetición.",
+    )
+    p.add_argument(
+        "--juez",
+        action="store_true",
+        help="Puntúa cada traza con el LLM-as-judge (una llamada extra por caso).",
     )
     p.add_argument(
         "--salida",
@@ -133,13 +140,27 @@ def main(argv: list[str] | None = None) -> int:
                 )
 
     crudo = [t.como_dict() for t in trazas]
+
+    if args.juez:
+        print("\n# rúbrica cualitativa (LLM-as-judge)")
+        for i, dic in enumerate(crudo, 1):
+            print(f"[{i}/{len(crudo)}] juzgando {dic['condicion']} · {dic['escenario']}",
+                  end=" ", flush=True)
+            dic["juez"] = juzgar(dic)
+            print("->", "error" if "error_juez" in dic["juez"] else "ok")
+
     (destino / "trazas.json").write_text(
         json.dumps(crudo, indent=2, ensure_ascii=False), encoding="utf-8"
     )
+    resumen = escribir(destino, crudo)
 
-    logradas = sum(1 for t in trazas if t.meta_lograda)
-    print(f"\nMeta lograda: {logradas}/{len(trazas)}")
-    print(f"Trazas en {destino}")
+    g = resumen["global"]
+    print(f"\nMeta lograda: {g['exitos']}/{g['n']} ({g['tasa_exito']:.0%})"
+          f" | repetidas: {g['repeticion_media']:.0%}")
+    if resumen["modos_de_fallo"]:
+        print("Modos de fallo:", ", ".join(
+            f"{m}={c}" for m, c in resumen["modos_de_fallo"].items()))
+    print(f"Resultados en {destino}  (summary.json + informe.md)")
     return 0
 
 
