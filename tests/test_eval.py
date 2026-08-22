@@ -1,0 +1,214 @@
+"""Tests de la infraestructura de evaluación (M3).
+
+La taxonomía de errores y las métricas son las que sostienen todas las
+afirmaciones del informe: si clasifican mal, el análisis entero queda
+viciado. Se testean con trazas sintéticas, sin LLM ni mundo real, para que
+corran en cualquier máquina y en milisegundos.
+"""
+
+from __future__ import annotations
+
+import pytest
+
+from eval.analysis import clasificar, fraccion_repetidas, modo_principal, resumen_modos
+from eval.config import OPTIMOS, presupuesto_iteraciones
+from eval.metrics import eficiencia, resumir
+
+
+def _paso(indice: int, herramienta: str, argumentos: str, salida="ok", error=None):
+    return {
+        "indice": indice,
+        "herramienta": herramienta,
+        "argumentos": argumentos,
+        "salida": salida,
+        "error": error,
+    }
+
+
+def _traza(**kwargs):
+    """Traza mínima válida; los kwargs pisan lo que haga falta."""
+    base = {
+        "escenario": "study-with-key",
+        "dificultad": "easy",
+        "condicion": "baseline",
+        "repeticion": 0,
+        "modelo": "test",
+        "meta_lograda": False,
+        "meta_razon": "puerta principal está cerrada",
+        "optimo": 3,
+        "pasos": [],
+        "llamadas_llm": [],
+        "n_llamadas_llm": 0,
+        "input_tokens": 100,
+        "output_tokens": 10,
+        "latencia_s": 1.0,
+        "corte": None,
+        "respuesta": "no pude",
+        "fallo_infra": None,
+    }
+    base.update(kwargs)
+    return base
+
+
+# ---------------------------------------------------------------------------
+# Presupuesto de iteraciones
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("escenario", list(OPTIMOS))
+def test_presupuesto_supera_al_optimo(escenario: str):
+    """Nunca se corta un escenario por nuestro techo antes de que el modelo
+    tenga oportunidad de resolverlo: el presupuesto debe superar al óptimo."""
+    assert presupuesto_iteraciones(escenario) > OPTIMOS[escenario]
+
+
+# ---------------------------------------------------------------------------
+# Detección de repeticiones
+# ---------------------------------------------------------------------------
+
+
+def test_fraccion_repetidas_cuenta_llamadas_identicas():
+    pasos = [
+        _paso(0, "examine", '{"target": "alfombra"}'),
+        _paso(1, "examine", '{"target": "alfombra"}'),
+        _paso(2, "examine", '{"target": "alfombra"}'),
+        _paso(3, "take", '{"item": "llave"}'),
+    ]
+    assert fraccion_repetidas(pasos) == 0.5  # 2 repeticiones sobre 4 llamadas
+
+
+def test_fraccion_repetidas_distingue_argumentos():
+    """Misma herramienta con distinto objetivo NO es repetir."""
+    pasos = [
+        _paso(0, "examine", '{"target": "alfombra"}'),
+        _paso(1, "examine", '{"target": "escritorio"}'),
+    ]
+    assert fraccion_repetidas(pasos) == 0.0
+
+
+def test_fraccion_repetidas_sin_pasos():
+    assert fraccion_repetidas([]) == 0.0
+
+
+# ---------------------------------------------------------------------------
+# Taxonomía de modos de fallo
+# ---------------------------------------------------------------------------
+
+
+def test_corrida_exitosa_no_tiene_modos_de_fallo():
+    """Aunque se haya equivocado por el camino: si llegó, los errores fueron
+    recuperados y no son modos de fallo."""
+    traza = _traza(
+        meta_lograda=True,
+        pasos=[_paso(0, "examine", "{}", error="Argumentos inválidos para 'examine'.")],
+    )
+    assert clasificar(traza) == []
+    assert modo_principal(traza) is None
+
+
+def test_detecta_bucle():
+    pasos = [_paso(i, "look", "{}") for i in range(10)]
+    traza = _traza(pasos=pasos, corte="Se alcanzó el máximo de iteraciones (10).")
+    modos = clasificar(traza)
+    assert "bucle" in modos
+    assert modo_principal(traza) == "bucle"
+
+
+def test_detecta_tool_call_en_texto():
+    """El modelo escribió la llamada como texto y el bucle la leyó como final."""
+    traza = _traza(respuesta='{"name": "look"}')
+    assert "tool_call_en_texto" in clasificar(traza)
+    assert modo_principal(traza) == "tool_call_en_texto"
+
+
+def test_detecta_accion_invalida_del_mundo():
+    """La herramienta corrió, pero el mundo rechazó la acción."""
+    traza = _traza(
+        pasos=[_paso(0, "go", '{"direction": "sur"}', salida="Error: no hay salida 'sur'")],
+    )
+    assert "accion_invalida" in clasificar(traza)
+
+
+def test_detecta_argumentos_invalidos_y_tool_alucinada():
+    traza = _traza(
+        pasos=[
+            _paso(0, "examine", "{}", error="Argumentos inválidos para 'examine'."),
+            _paso(1, "volar", "{}", error="Herramienta desconocida: 'volar'."),
+        ]
+    )
+    modos = clasificar(traza)
+    assert "argumentos_invalidos" in modos
+    assert "tool_alucinada" in modos
+
+
+def test_detecta_parada_prematura():
+    """Cerró con texto normal, sin corte y sin cumplir la meta."""
+    traza = _traza(respuesta="Creo que la puerta ya está abierta.")
+    assert modo_principal(traza) == "parada_prematura"
+
+
+def test_detecta_limite_de_iteraciones_sin_bucle():
+    pasos = [_paso(i, "examine", f'{{"target": "obj{i}"}}') for i in range(10)]
+    traza = _traza(pasos=pasos, corte="Se alcanzó el máximo de iteraciones (10).")
+    assert modo_principal(traza) == "limite_iteraciones"
+
+
+def test_detecta_desborde_de_contexto():
+    traza = _traza(llamadas_llm=[{"input_tokens": 15_000}])
+    assert "desborde_contexto" in clasificar(traza)
+
+
+def test_detecta_orden_incorrecto():
+    traza = _traza(meta_razon="condiciones cumplidas en orden incorrecto")
+    assert "orden_incorrecto" in clasificar(traza)
+
+
+def test_fallo_de_infraestructura_se_aisla():
+    """Un caso que revienta por infra no se cuenta como fallo del agente."""
+    traza = _traza(fallo_infra="ConnectionError: proveedor caído")
+    assert clasificar(traza) == ["fallo_infraestructura"]
+
+
+def test_resumen_modos_cuenta_principales():
+    trazas = [
+        _traza(pasos=[_paso(i, "look", "{}") for i in range(10)], corte="límite"),
+        _traza(respuesta='{"name": "look"}'),
+        _traza(meta_lograda=True),
+    ]
+    resumen = resumen_modos(trazas)
+    assert resumen["bucle"] == 1
+    assert resumen["tool_call_en_texto"] == 1
+    assert sum(resumen.values()) == 2, "la corrida exitosa no debe contarse"
+
+
+# ---------------------------------------------------------------------------
+# Métricas
+# ---------------------------------------------------------------------------
+
+
+def test_eficiencia_es_none_si_no_llego_a_la_meta():
+    """Pocos pasos en una corrida fallida significa que se rindió, no que
+    fue eficiente."""
+    assert eficiencia(_traza(pasos=[_paso(0, "look", "{}")])) is None
+
+
+def test_eficiencia_optimo_sobre_usados():
+    traza = _traza(meta_lograda=True, optimo=3, pasos=[_paso(i, "x", str(i)) for i in range(6)])
+    assert eficiencia(traza) == 0.5
+
+
+def test_eficiencia_acotada_a_uno():
+    """Resolver por debajo del óptimo publicado no da eficiencia > 1."""
+    traza = _traza(meta_lograda=True, optimo=10, pasos=[_paso(0, "x", "0")])
+    assert eficiencia(traza) == 1.0
+
+
+def test_resumir_agrega_tasa_y_conteos():
+    trazas = [_traza(meta_lograda=True, pasos=[_paso(0, "x", "0")]), _traza()]
+    r = resumir(trazas)
+    assert r.n == 2 and r.exitos == 1 and r.tasa_exito == 0.5
+
+
+def test_resumir_sin_trazas_no_divide_por_cero():
+    r = resumir([])
+    assert r.n == 0 and r.tasa_exito == 0.0
