@@ -485,17 +485,71 @@ class MyAgent:
         """
         tool = self._tools.get(call.name)
         if tool is None:
-            return None, f"Herramienta desconocida: {call.name!r}."
+            disponibles = ", ".join(sorted(self._schemas)) or "(ninguna)"
+            return None, (
+                f"Herramienta desconocida: {call.name!r}. "
+                f"Herramientas disponibles: {disponibles}."
+            )
 
         try:
             kwargs = json.loads(call.arguments) if call.arguments else {}
         except json.JSONDecodeError as exc:
             return None, f"Argumentos JSON inválidos para {call.name!r}: {exc}."
+        if not isinstance(kwargs, dict):
+            return None, (
+                f"Los argumentos de {call.name!r} deben ser un objeto JSON con "
+                f"los nombres de parámetro; recibí {type(kwargs).__name__}."
+            )
+
+        error_args = self._validar_argumentos(call.name, kwargs)
+        if error_args is not None:
+            return None, error_args
 
         try:
             return self._con_reintentos(lambda: tool(**kwargs)), None
         except Exception as exc:  # noqa: BLE001 — una tool puede fallar; no rompemos el bucle.
             return None, f"Error al ejecutar {call.name!r}: {exc}."
+
+    def _validar_argumentos(self, nombre: str, kwargs: dict[str, Any]) -> str | None:
+        """Compara los argumentos contra el esquema. Devuelve error o `None`.
+
+        Por qué existe: el LLM adivina los nombres de los parámetros, y
+        cuando yerra, invocar el callable levanta un `TypeError` de CPython
+        ("got an unexpected keyword argument 'objeto'") que filtra internals
+        y —lo importante— **no dice cuál era el nombre correcto**. El modelo
+        se queda adivinando y entra en bucle.
+
+        Como el esquema registrado ya declara los parámetros, podemos
+        responder algo accionable: qué se esperaba, qué llegó y, cuando el
+        mapeo es evidente (sobra uno y falta uno), cuál era el que iba.
+        Mismo principio que los errores de las tools en M2, aplicado a la
+        capa de despacho.
+        """
+        schema = self._schemas.get(nombre)
+        if schema is None:  # registrada sin esquema: no hay contra qué validar
+            return None
+        parametros = schema.parameters.get("properties") or {}
+        esperados = set(parametros)
+        requeridos = set(schema.parameters.get("required") or [])
+        sobrantes = sorted(set(kwargs) - esperados)
+        faltantes = sorted(requeridos - set(kwargs))
+        if not sobrantes and not faltantes:
+            return None
+
+        firma = ", ".join(sorted(esperados)) or "(sin parámetros)"
+        partes = [f"Argumentos inválidos para {nombre!r}."]
+        if sobrantes:
+            partes.append(f"No existe(n) el/los parámetro(s): {', '.join(sobrantes)}.")
+        if faltantes:
+            partes.append(f"Falta(n) el/los requerido(s): {', '.join(faltantes)}.")
+        if len(sobrantes) == 1 and len(faltantes) == 1:
+            # Caso típico: el modelo tradujo el nombre del parámetro.
+            partes.append(
+                f"Probablemente quisiste decir {faltantes[0]!r} en lugar de "
+                f"{sobrantes[0]!r}."
+            )
+        partes.append(f"Parámetros válidos: {firma}.")
+        return " ".join(partes)
 
     @staticmethod
     def _assistant_turn(response: LLMResponse) -> dict[str, Any]:
