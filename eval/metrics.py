@@ -46,6 +46,7 @@ class Resumen:
     """Métricas agregadas de un grupo de corridas."""
 
     n: int
+    descartadas: int
     exitos: int
     tasa_exito: float
     eficiencia_media: float          # solo sobre las exitosas
@@ -60,6 +61,7 @@ class Resumen:
     def como_dict(self) -> dict[str, Any]:
         return {
             "n": self.n,
+            "descartadas": self.descartadas,
             "exitos": self.exitos,
             "tasa_exito": round(self.tasa_exito, 3),
             "eficiencia_media": round(self.eficiencia_media, 3),
@@ -90,11 +92,22 @@ def eficiencia(traza: dict[str, Any]) -> float | None:
 
 
 def resumir(trazas: list[dict[str, Any]]) -> Resumen:
-    """Agrega un grupo de corridas en un `Resumen`."""
+    """Agrega un grupo de corridas en un `Resumen`.
+
+    Las corridas con `fallo_infra` se **excluyen** de todos los agregados y
+    se cuentan aparte en `descartadas`. Una corrida que reventó por
+    infraestructura es una observación contaminada: sus pasos, tokens y
+    latencia quedaron truncados en un punto arbitrario, así que promediarla
+    junto al resto ensucia cada métrica. Que el contador sea visible obliga
+    a mirar cuántas se perdieron en lugar de que desaparezcan en silencio.
+    """
+    descartadas = [t for t in trazas if t.get("fallo_infra")]
+    trazas = [t for t in trazas if not t.get("fallo_infra")]
     n = len(trazas)
     exitosas = [t for t in trazas if t.get("meta_lograda")]
     return Resumen(
         n=n,
+        descartadas=len(descartadas),
         exitos=len(exitosas),
         tasa_exito=(len(exitosas) / n) if n else 0.0,
         eficiencia_media=_media(e for e in (eficiencia(t) for t in exitosas) if e),

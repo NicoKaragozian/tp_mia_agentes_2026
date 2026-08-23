@@ -64,10 +64,14 @@ def clasificar(traza: dict[str, Any]) -> list[str]:
     por el camino: si llegó a la meta, esos errores fueron recuperados y no
     son modos de *fallo*.
     """
-    if traza.get("meta_lograda"):
-        return []
+    # El fallo de infraestructura se chequea ANTES que la meta: una corrida
+    # puede haber abierto la puerta y reventar después (el mundo ya quedó en
+    # estado ganador, pero la corrida se truncó). Clasificarla como éxito
+    # limpio escondería que el proveedor falló.
     if traza.get("fallo_infra"):
         return ["fallo_infraestructura"]
+    if traza.get("meta_lograda"):
+        return []
 
     modos: list[str] = []
     pasos = traza.get("pasos") or []

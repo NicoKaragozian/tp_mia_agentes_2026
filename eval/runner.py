@@ -52,6 +52,8 @@ class Traza:
     optimo: int
     pasos: list[Paso] = field(default_factory=list)
     llamadas_llm: list[dict[str, Any]] = field(default_factory=list)
+    #: Lo que vio el modelo en su última llamada, ya recortado por la ventana.
+    ultimo_contexto: list[dict[str, Any]] = field(default_factory=list)
     n_llamadas_llm: int = 0
     input_tokens: int | None = None
     output_tokens: int | None = None
@@ -141,6 +143,7 @@ def ejecutar_caso(
 
     traza.latencia_s = time.perf_counter() - inicio
     traza.llamadas_llm = grabador.como_dicts()
+    traza.ultimo_contexto = grabador.ultimo_contexto
     traza.n_llamadas_llm = len(grabador.llamadas)
 
     # La meta se evalúa SIEMPRE sobre el estado del mundo, no sobre lo que

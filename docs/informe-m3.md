@@ -183,7 +183,14 @@ La captura de trazas se hace envolviendo el **cliente LLM**
 protocolo que usan los tests con `MockLLMClient`, y deja tanto `agent.py` como
 `mia_agents/` intactos. Por llamada se guardan metadatos (mensajes enviados,
 herramientas ofrecidas, respuesta, tokens, latencia) en vez del historial
-completo, que crecería de forma cuadrática al acumularse turno a turno.
+completo, que crecería de forma cuadrática al acumularse turno a turno; una
+sola vez se guarda el contexto de la última llamada, acotado por la ventana,
+que es lo que permite verificar después qué vio realmente el modelo.
+
+Las corridas que revientan por infraestructura se marcan (`fallo_infra`), se
+**excluyen** de todos los agregados y se cuentan aparte: sus pasos, tokens y
+latencia quedaron truncados en un punto arbitrario, así que promediarlas
+ensuciaría cada métrica. En las 91 corridas de este informe el contador es 0.
 
 La propia infraestructura está testeada (`tests/test_eval.py`, 27 casos con
 trazas sintéticas): si la taxonomía clasificara mal, todas las afirmaciones de

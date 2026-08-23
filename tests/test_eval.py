@@ -212,3 +212,27 @@ def test_resumir_agrega_tasa_y_conteos():
 def test_resumir_sin_trazas_no_divide_por_cero():
     r = resumir([])
     assert r.n == 0 and r.tasa_exito == 0.0
+
+
+def test_fallo_de_infra_gana_sobre_meta_lograda():
+    """Una corrida que abrió la puerta y después reventó no es un éxito limpio.
+
+    El mundo queda en estado ganador (check_goal da True) pero la corrida se
+    truncó: contarla como éxito sin más escondería que el proveedor falló.
+    """
+    traza = _traza(meta_lograda=True, fallo_infra="ConnectionError: proveedor caído")
+    assert clasificar(traza) == ["fallo_infraestructura"]
+
+
+def test_resumir_excluye_las_corridas_contaminadas():
+    """Sus pasos y tokens quedaron truncados: promediarlas ensucia todo."""
+    trazas = [
+        _traza(meta_lograda=True, pasos=[_paso(0, "x", "0")]),
+        _traza(meta_lograda=False),
+        _traza(meta_lograda=True, fallo_infra="boom", pasos=[_paso(i, "x", str(i)) for i in range(99)]),
+    ]
+    r = resumir(trazas)
+    assert r.n == 2, "la corrida contaminada no entra en el denominador"
+    assert r.descartadas == 1
+    assert r.exitos == 1 and r.tasa_exito == 0.5
+    assert r.pasos_medios == 0.5, "los 99 pasos truncados no deben promediarse"

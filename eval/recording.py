@@ -12,7 +12,14 @@ se enviaron, qué herramientas se ofrecieron, qué devolvió el modelo,
 tokens, latencia). NO guardamos la lista de mensajes completa en cada
 llamada: como el historial crece turno a turno, eso haría que el archivo
 creciera de forma cuadrática (y `extreme-archive` arrastra ~16K tokens de
-prosa). El historial completo se guarda una sola vez, al final.
+prosa).
+
+Sí guardamos, una sola vez, el **contexto de la última llamada**
+(`ultimo_contexto`): la lista de mensajes tal como la recibió el modelo al
+final de la corrida, ya recortada por la ventana deslizante. Está acotada
+por `max_history_messages`, así que no crece, y es lo que permite verificar
+después qué vio realmente el modelo — la evidencia con la que se analizó el
+experimento de memoria.
 """
 
 from __future__ import annotations
@@ -57,6 +64,8 @@ class ClienteGrabador:
     def __init__(self, interno: Any) -> None:
         self._interno = interno
         self.llamadas: list[LlamadaLLM] = []
+        #: Mensajes de la última llamada, ya recortados por la ventana.
+        self.ultimo_contexto: list[dict[str, Any]] = []
 
     def chat(
         self,
@@ -67,6 +76,12 @@ class ClienteGrabador:
         response_format: dict[str, Any] | None = None,
     ) -> LLMResponse:
         indice = len(self.llamadas)
+        self.ultimo_contexto = [
+            {**m, "content": _recortar(m["content"], 400)}
+            if isinstance(m.get("content"), str)
+            else dict(m)
+            for m in messages
+        ]
         ultimo = dict(messages[-1]) if messages else None
         if ultimo is not None and isinstance(ultimo.get("content"), str):
             ultimo["content"] = _recortar(ultimo["content"], 600)
