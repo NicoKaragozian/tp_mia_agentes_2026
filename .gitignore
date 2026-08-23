@@ -10,3 +10,9 @@ docs/README.md
 
 # Trazas crudas de la evaluación (se regeneran con `python eval/run.py`)
 eval/results/
+
+# Credenciales: NUNCA se versionan
+.env
+.env.*
+!.env.example
+.aws/
