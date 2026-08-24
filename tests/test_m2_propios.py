@@ -840,3 +840,69 @@ def test_misma_accion_con_resultado_distinto_no_se_marca():
     assert all("AVISO DEL SISTEMA" not in m["content"] for m in mensajes_tool), (
         "misma firma con resultado distinto es información nueva, no un bucle"
     )
+
+
+# ---------------------------------------------------------------------------
+# Bloqueo de repeticiones estériles (M3)
+# ---------------------------------------------------------------------------
+
+
+def test_bloqueo_recien_actua_a_la_tercera():
+    """Las dos primeras ejecuciones corren: hace falta la segunda para
+    comprobar que el resultado no cambia. La tercera se bloquea."""
+    tool, schema = make_recording_tool(return_value="siempre igual")
+    mock = MockLLMClient(
+        [_llamada_a(schema.name, {"text": "x"}, f"c{i}") for i in range(3)]
+        + [LLMResponse(content="fin")]
+    )
+    agent = build_agent({"llm_client": mock, "bloquear_repeticiones": True})
+    agent.register_tool(tool, schema)
+    result = agent.run("dale")
+
+    assert len(tool.calls) == 2, "la tercera no debe llegar a ejecutarse"
+    assert result.steps[0].error is None and result.steps[1].error is None
+    assert "bloqueada" in (result.steps[2].error or "").lower()
+
+
+def test_bloqueo_se_levanta_si_el_resultado_cambia():
+    """`look()` tras moverse de sala devuelve otra cosa: deja de ser estéril
+    y se puede volver a llamar. Sin esto, se rompería la navegación."""
+    from mia_agents.types import ToolSchema
+
+    salidas = iter(["sala A", "sala A", "sala B", "sala B"])
+
+    def mirar() -> str:
+        """Describe la sala actual."""
+        return next(salidas)
+
+    schema = ToolSchema.from_callable(mirar)
+    mock = MockLLMClient(
+        [
+            LLMResponse(content=None, tool_calls=[ToolCall(id=f"c{i}", name="mirar", arguments="{}")])
+            for i in range(4)
+        ]
+        + [LLMResponse(content="fin")]
+    )
+    agent = build_agent({"llm_client": mock, "bloquear_repeticiones": True})
+    agent.register_tool(mirar, schema)
+    result = agent.run("dale")
+
+    errores = [s.error for s in result.steps]
+    assert errores[0] is None and errores[1] is None
+    assert "bloqueada" in (errores[2] or "").lower(), "la 3ra idéntica se bloquea"
+    assert errores[3] is None, (
+        "tras cambiar el resultado la marca se levanta y vuelve a ejecutarse"
+    )
+
+
+def test_bloqueo_apagado_por_defecto():
+    tool, schema = make_recording_tool(return_value="igual")
+    mock = MockLLMClient(
+        [_llamada_a(schema.name, {"text": "x"}, f"c{i}") for i in range(3)]
+        + [LLMResponse(content="fin")]
+    )
+    agent = build_agent({"llm_client": mock})
+    agent.register_tool(tool, schema)
+    agent.run("dale")
+
+    assert len(tool.calls) == 3, "sin el flag, nada se bloquea"

@@ -161,11 +161,29 @@ E4_PRESUPUESTO = [
     ),
 ]
 
+#: E5 — bloqueo de repeticiones estériles. El 100% de los fracasos con Nova
+#: Lite son bucles; avisarle al modelo no sirvió (E3), así que acá se le
+#: impide ejecutar la repetición.
+E5_BLOQUEO = [
+    BASELINE,
+    Condicion(
+        nombre="con_bloqueo",
+        descripcion="Baseline que se niega a ejecutar repeticiones estériles.",
+        overrides={
+            "system_prompt": PROMPT_SALA_DE_ESCAPE,
+            "max_history_messages": 50,
+            "memoria_de_acciones": False,
+            "bloquear_repeticiones": True,
+        },
+    ),
+]
+
 EXPERIMENTOS: dict[str, list[Condicion]] = {
     "e1-memoria": E1_MEMORIA,
     "e2-prompt": E2_PROMPT,
     "e3-acciones": E3_ACCIONES,
     "e4-presupuesto": E4_PRESUPUESTO,
+    "e5-bloqueo": E5_BLOQUEO,
 }
 
 
@@ -207,6 +225,17 @@ HIPOTESIS: dict[str, str] = {
         "el presupuesto ya están cicladas y más pasos solo son más repetición "
         "(los fracasos hacen 50 pasos con apenas 7-8 acciones distintas, así "
         "que esta refutación es plausible)."
+    ),
+    "e5-bloqueo": (
+        "El 100% de los fracasos medidos con Nova Lite son bucles, y las "
+        "corridas fallidas gastan 50-100 pasos ejecutando apenas 7-8 acciones "
+        "distintas. Avisarle al modelo que estaba repitiendo no tuvo ningún "
+        "efecto (E3). La hipótesis es que IMPEDIRLE ejecutar una repetición ya "
+        "demostrada estéril lo fuerza a explorar otra rama y sube la tasa de "
+        "éxito. Refutaría la hipótesis que la tasa no suba: significaría que "
+        "el agente, bloqueado en una acción, simplemente cicla entre otras "
+        "acciones igual de estériles, y que el problema no es la repetición "
+        "sino que no se le ocurre qué más hacer."
     ),
     "e2-prompt": (
         "El prompt genérico del framework produce conducta de asistente "

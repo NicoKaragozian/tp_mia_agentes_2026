@@ -172,6 +172,7 @@ class MyAgent:
         max_retries: int = 2,
         retry_base_delay: float = 0.2,
         memoria_de_acciones: bool = False,
+        bloquear_repeticiones: bool = False,
     ) -> None:
         """Inicializa el agente.
 
@@ -201,6 +202,10 @@ class MyAgent:
             herramientas que ya ejecutó en esta conversación y lo agrega al
             system prompt en cada llamada. Ver `_bloque_de_acciones`.
             Apagado por defecto: el comportamiento de M1 y M2 no cambia.
+        bloquear_repeticiones : bool
+            Si es `True`, el agente se niega a ejecutar una llamada que ya
+            demostró ser improductiva. Ver `_es_repeticion_esteril`.
+            Apagado por defecto.
         """
         # Validación de la configuración. El caso interesante es
         # `max_history_messages`: un tope de 0 (o negativo) es CONTRADICTORIO
@@ -228,6 +233,7 @@ class MyAgent:
         self._max_retries = max_retries
         self._retry_base_delay = retry_base_delay
         self._memoria_de_acciones = memoria_de_acciones
+        self._bloquear_repeticiones = bloquear_repeticiones
         #: (herramienta, argumentos) -> [veces, desenlace resumido]
         self._acciones: dict[tuple[str, str], list[Any]] = {}
         # Memoria de la conversación (M2). Historial completo y persistente
@@ -405,7 +411,7 @@ class MyAgent:
         if not self._acciones:
             return ""
         fallidas, exitosas = [], []
-        for (herramienta, args), (veces, desenlace, _salida) in self._acciones.items():
+        for (herramienta, args), (veces, desenlace, _sal, _est) in self._acciones.items():
             repeticion = f" [ya intentada {veces} veces]" if veces > 1 else ""
             linea = f"  - {herramienta}({args}) -> {desenlace}{repeticion}"
             (fallidas if desenlace.startswith("ERROR") else exitosas).append(linea)
@@ -442,7 +448,7 @@ class MyAgent:
         Es el modo de fallo dominante que medimos: 4 de 6 fracasos con Nova
         Lite fueron `look()` repetido entre 21 y 48 veces.
         """
-        if not self._memoria_de_acciones:
+        if not (self._memoria_de_acciones or self._bloquear_repeticiones):
             return False
         texto = error or salida or ""
         fallo = bool(error) or texto.startswith("Error")
@@ -451,12 +457,16 @@ class MyAgent:
 
         anterior = self._acciones.get(clave)
         if anterior is None:
-            self._acciones[clave] = [1, desenlace, texto]
+            self._acciones[clave] = [1, desenlace, texto, False]
             return False
         anterior[0] += 1
         anterior[1] = desenlace
         improductiva = anterior[2] == texto
         anterior[2] = texto
+        # Queda "confirmada" cuando dos ejecuciones seguidas devolvieron lo
+        # mismo. Si el resultado cambia (p. ej. `look` tras un `go`), la
+        # marca se levanta: dejó de ser estéril.
+        anterior[3] = improductiva
         return improductiva
 
     #: Aviso que se adjunta al resultado cuando una acción no aportó nada.
@@ -614,10 +624,43 @@ class MyAgent:
         if error_args is not None:
             return None, error_args
 
+        if self._es_repeticion_esteril(call):
+            return None, (
+                f"Acción bloqueada: ya ejecutaste {call.name} con estos mismos "
+                f"argumentos dos veces y devolvió EXACTAMENTE lo mismo, así que "
+                f"no aporta nada nuevo. No se ejecutó. Elegí una acción "
+                f"diferente: examiná algo que no hayas examinado, tomá un objeto "
+                f"que hayas encontrado, o usá algo de tu inventario."
+            )
+
         try:
             return self._con_reintentos(lambda: tool(**kwargs)), None
         except Exception as exc:  # noqa: BLE001 — una tool puede fallar; no rompemos el bucle.
             return None, f"Error al ejecutar {call.name!r}: {exc}."
+
+    def _es_repeticion_esteril(self, call: ToolCall) -> bool:
+        """True si esta llamada ya demostró que repetirla no cambia nada.
+
+        No se puede saber de antemano si una llamada devolverá lo mismo: hay
+        que ejecutarla. Y ejecutar no es gratis — `take`, `use` y `go` mutan
+        el mundo. Por eso el bloqueo recién actúa a partir de la TERCERA
+        ejecución idéntica, cuando la segunda ya comprobó empíricamente que
+        el resultado no cambió.
+
+        La marca se levanta sola si el resultado vuelve a cambiar. Eso es lo
+        que hace correcto el bloqueo en escenarios multi-sala: `look()` tras
+        un `go` devuelve otra descripción, deja de estar marcada y se puede
+        volver a llamar.
+
+        Motivación: el 100% de los fracasos que medimos con Nova Lite son
+        bucles, y las corridas fallidas ejecutan 50-100 pasos con apenas 7-8
+        acciones distintas. Avisarle al modelo no alcanzó (experimento E3);
+        esto se lo impide.
+        """
+        if not self._bloquear_repeticiones:
+            return False
+        entrada = self._acciones.get((call.name, (call.arguments or "").strip()))
+        return bool(entrada and entrada[3])
 
     def _validar_argumentos(self, nombre: str, kwargs: dict[str, Any]) -> str | None:
         """Compara los argumentos contra el esquema. Devuelve error o `None`.
