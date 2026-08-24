@@ -52,10 +52,16 @@ def presupuesto_iteraciones(escenario_id: str = "") -> int:
     caso del dataset (`2 × máximo óptimo + 8`), y ese mismo número rige para
     los ocho escenarios.
 
+    El valor NO se eligió a ojo: sale del experimento E4, que comparó 25, 50
+    y 100 iteraciones sobre los dos escenarios más difíciles y encontró una
+    mejora monótona (38% -> 56% -> 81%). Con 50, los éxitos de office-sequence
+    se acumulaban exactamente en el techo, señal de que el tope estaba
+    cortando corridas que iban camino a resolver.
+
     El parámetro se mantiene por compatibilidad con las llamadas existentes,
     pero no se usa: el presupuesto no depende del escenario.
     """
-    return 2 * max(OPTIMOS.values()) + 8
+    return 100
 
 
 @dataclass(frozen=True)
