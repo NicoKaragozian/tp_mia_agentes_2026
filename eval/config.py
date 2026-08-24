@@ -75,11 +75,11 @@ class Condicion:
 #: mundo. Todos los experimentos se comparan contra esta.
 BASELINE = Condicion(
     nombre="baseline",
-    descripcion="Prompt especializado, ventana de 50 mensajes, memoria de acciones.",
+    descripcion="Prompt especializado, ventana de 50 mensajes.",
     overrides={
         "system_prompt": PROMPT_SALA_DE_ESCAPE,
         "max_history_messages": 50,
-        "memoria_de_acciones": True,
+        "memoria_de_acciones": False,
     },
 )
 
@@ -115,16 +115,16 @@ E2_PROMPT = [
 #: reduce el bucle. Es la memoria episódica que el informe del M3 había
 #: dejado anotada como trabajo futuro.
 E3_ACCIONES = [
+    BASELINE,
     Condicion(
-        nombre="sin_memoria_acciones",
-        descripcion="Baseline sin el registro de acciones ejecutadas.",
+        nombre="con_memoria_acciones",
+        descripcion="Baseline más el registro de acciones ya ejecutadas.",
         overrides={
             "system_prompt": PROMPT_SALA_DE_ESCAPE,
             "max_history_messages": 50,
-            "memoria_de_acciones": False,
+            "memoria_de_acciones": True,
         },
     ),
-    BASELINE,
 ]
 
 EXPERIMENTOS: dict[str, list[Condicion]] = {
