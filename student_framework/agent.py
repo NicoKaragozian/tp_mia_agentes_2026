@@ -171,6 +171,7 @@ class MyAgent:
         max_history_messages: int = 50,
         max_retries: int = 2,
         retry_base_delay: float = 0.2,
+        memoria_de_acciones: bool = False,
     ) -> None:
         """Inicializa el agente.
 
@@ -195,6 +196,11 @@ class MyAgent:
             Espera base (segundos) del backoff exponencial entre
             reintentos: base, 2*base, 4*base, ... Con 0 no se duerme
             (útil en tests).
+        memoria_de_acciones : bool
+            Si es `True`, el agente mantiene un registro compacto de las
+            herramientas que ya ejecutó en esta conversación y lo agrega al
+            system prompt en cada llamada. Ver `_bloque_de_acciones`.
+            Apagado por defecto: el comportamiento de M1 y M2 no cambia.
         """
         # Validación de la configuración. El caso interesante es
         # `max_history_messages`: un tope de 0 (o negativo) es CONTRADICTORIO
@@ -221,6 +227,9 @@ class MyAgent:
         self._max_history_messages = max_history_messages
         self._max_retries = max_retries
         self._retry_base_delay = retry_base_delay
+        self._memoria_de_acciones = memoria_de_acciones
+        #: (herramienta, argumentos) -> [veces, desenlace resumido]
+        self._acciones: dict[tuple[str, str], list[Any]] = {}
         # Memoria de la conversación (M2). Historial completo y persistente
         # entre llamadas a `run`: acá se escribe TODO (turnos de usuario,
         # del assistant y resultados de tools). Lo que se envía al LLM en
@@ -291,7 +300,7 @@ class MyAgent:
                     # Sin tools registradas pasamos None; el contrato exige
                     # que, si hay tools, su nombre aparezca en la lista.
                     tools=list(self._schemas.values()) or None,
-                    system=self._system,
+                    system=self._system_efectivo(),
                 )
             )
             if response.input_tokens is not None or response.output_tokens is not None:
@@ -326,6 +335,7 @@ class MyAgent:
             self._history.append(self._assistant_turn(response))
             for call in response.tool_calls:
                 output, error = self._dispatch(call)
+                self._registrar_accion(call, output, error)
                 steps.append(
                     AgentStep(
                         tool_name=call.name,
@@ -363,6 +373,73 @@ class MyAgent:
             input_tokens=tokens_entrada if alguien_reporto else None,
             output_tokens=tokens_salida if alguien_reporto else None,
         )
+
+    def _bloque_de_acciones(self) -> str:
+        """Resumen compacto de lo que el agente ya ejecutó, para el system prompt.
+
+        Por qué existe: el modo de fallo dominante que medimos en el M3 es el
+        **bucle** — el agente reinvoca acciones que ya ejecutó. La causa es
+        estructural: una corrida larga genera más mensajes de los que entran
+        en la ventana, así que sus propios intentos anteriores se le caen del
+        contexto y no puede saber que ya los hizo.
+
+        Agrandar la ventana no lo arregla: medimos que con 160 mensajes la
+        repetición sube a 74% (más contexto diluye la atención) y con 4
+        mensajes el agente directamente colapsa. El problema no es cuánta
+        conversación ve, sino que la información "esto ya lo intenté" está
+        diluida en decenas de mensajes en vez de estar resumida.
+
+        Este bloque va en el **system prompt**, que viaja por el parámetro
+        `system=` de `chat(...)` y por lo tanto NO consume presupuesto de la
+        ventana deslizante. Es memoria episódica: un log deduplicado de
+        `(herramienta, argumentos) -> desenlace`, con el conteo de veces que
+        se repitió.
+        """
+        if not self._acciones:
+            return ""
+        fallidas, exitosas = [], []
+        for (herramienta, args), (veces, desenlace) in self._acciones.items():
+            repeticion = f" [ya intentada {veces} veces]" if veces > 1 else ""
+            linea = f"  - {herramienta}({args}) -> {desenlace}{repeticion}"
+            (fallidas if desenlace.startswith("ERROR") else exitosas).append(linea)
+
+        partes = []
+        if fallidas:
+            # Las fallidas van primero y con el aviso más fuerte: son las que
+            # el agente tiende a reintentar en bucle.
+            partes.append(
+                "ACCIONES QUE YA FALLARON. Repetirlas dará EXACTAMENTE el mismo "
+                "error: está prohibido. Leé el error y hacé algo DISTINTO.\n"
+                + "\n".join(fallidas)
+            )
+        if exitosas:
+            partes.append(
+                "ACCIONES QUE YA HICISTE CON ÉXITO. Su información ya la tenés; "
+                "repetirlas no aporta nada nuevo y desperdicia turnos.\n"
+                + "\n".join(exitosas)
+            )
+        return "\n\n" + "\n\n".join(partes)
+
+    def _registrar_accion(self, call: ToolCall, salida: str | None, error: str | None) -> None:
+        """Anota una invocación en la memoria de acciones, deduplicando."""
+        if not self._memoria_de_acciones:
+            return
+        texto = error or salida or ""
+        if error or texto.startswith("Error"):
+            desenlace = f"ERROR: {texto[:90]}"
+        else:
+            desenlace = f"ok: {texto[:90]}"
+        clave = (call.name, (call.arguments or "").strip())
+        if clave in self._acciones:
+            self._acciones[clave][0] += 1
+        else:
+            self._acciones[clave] = [1, desenlace]
+
+    def _system_efectivo(self) -> str:
+        """System prompt más la memoria de acciones, si está habilitada."""
+        if not self._memoria_de_acciones:
+            return self._system
+        return self._system + self._bloque_de_acciones()
 
     def _ventana(
         self,

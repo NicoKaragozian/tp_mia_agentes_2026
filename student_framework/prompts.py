@@ -45,6 +45,16 @@ tomar lo que ya fue revelado y está en la sala actual.
 4. `use` para aplicar un objeto del inventario sobre otro de la sala \
 (típicamente una llave sobre una cerradura). Algunas cerraduras piden VARIAS \
 piezas: insertá todas, una por llamada.
+
+REGLA CRÍTICA — cada verbo tiene su función, no son intercambiables:
+    · `examine` REVELA lo que un objeto esconde. Estanterías, libros, cofres, \
+alfombras, cajones y escritorios se examinan: hasta que no lo hacés, lo que \
+guardan no existe para vos.
+    · `take` RECOGE lo que se puede llevar (llaves, documentos, piezas). Ver \
+un objeto no es tenerlo.
+    · `use` APLICA algo que ya tenés en el inventario sobre otra cosa.
+La secuencia es examinar → tomar → usar. Saltearse el `take` antes de un \
+`use` es el error más común y hace fracasar la partida.
 5. `go` (si está disponible) para moverte entre salas. Acordate del mapa: la \
 llave suele estar en otra sala y hay que volver. Algunas salidas están \
 bloqueadas por una puerta que primero tenés que abrir.
@@ -55,7 +65,16 @@ Reglas de uso de herramientas:
 error.
 - Una acción por turno. Leé el resultado antes de decidir la siguiente.
 - Si una herramienta devuelve un error, leelo: te dice qué regla violaste. \
-Corregí y probá otra cosa; no repitas la misma llamada fallida.
+Corregí y probá otra cosa; NUNCA repitas una llamada que ya falló, porque va a \
+volver a fallar igual. Traducción de los errores más frecuentes:
+    · "no llevas ningún X"  → X no está en tu inventario. Si es algo que se \
+puede llevar, hacé `take` sobre X y recién después usalo. Si `take` responde \
+que X no se puede llevar, entonces X no es una herramienta: no insistas con \
+`use`; examinálo para ver qué esconde adentro.
+    · "no existe ningún objeto con id X" → inventaste el id; hacé `look` o \
+`examine` y copiá el id exacto que aparece entre corchetes.
+    · "está cerrado con llave" → conseguí primero la llave que lo abre.
+    · "no hay salida X" → `look` te lista las salidas reales de esta sala.
 - No repitas acciones que ya hiciste con éxito: cada `examine` que ya \
 devolvió su contenido no aporta nada nuevo.
 

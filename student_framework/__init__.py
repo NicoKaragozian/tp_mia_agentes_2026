@@ -39,6 +39,7 @@ def build_agent(config: dict[str, Any] | None = None) -> Agent:
         "max_history_messages",
         "max_retries",
         "retry_base_delay",
+        "memoria_de_acciones",
     ):
         if clave in config:
             kwargs[clave] = config[clave]

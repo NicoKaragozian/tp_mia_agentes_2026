@@ -34,22 +34,28 @@ OPTIMOS: dict[str, int] = {
 ORDEN_ESCENARIOS: list[str] = list(OPTIMOS)
 
 
-def presupuesto_iteraciones(escenario_id: str) -> int:
-    """Tope de iteraciones del bucle para un escenario.
+def presupuesto_iteraciones(escenario_id: str = "") -> int:
+    """Tope de iteraciones del bucle. **El mismo para todos los escenarios.**
 
-    Por qué no un número fijo: cada iteración del bucle es UNA llamada al
+    Por qué no un número chico: cada iteración del bucle es UNA llamada al
     LLM, y si el modelo pide una herramienta por turno, un escenario de 21
     llamadas óptimas necesita al menos 22 iteraciones. Con el default del
-    framework (10) los escenarios largos fallarían por límite antes de que
-    el modelo tuviera oportunidad de razonar mal, y el análisis de errores
+    framework (10) los escenarios largos fallarían por límite antes de que el
+    modelo tuviera oportunidad de razonar mal, y el análisis de errores
     estaría midiendo nuestro techo en lugar de al agente.
 
-    La fórmula `2 * óptimo + 8` da margen para explorar y equivocarse
-    (aproximadamente el doble del camino ideal) sin volverse infinita, y
-    escala con la dificultad en vez de regalarle presupuesto de escenario
-    difícil a uno fácil.
+    Por qué uniforme y no proporcional a cada escenario: el criterio de
+    aprobación exige "el mismo agente en los tres niveles, sin trucos por
+    escenario". Un presupuesto derivado del óptimo de cada caso usa
+    información que el agente no tiene por qué conocer — sería ajustar la
+    configuración a la respuesta. El valor se fija una sola vez desde el peor
+    caso del dataset (`2 × máximo óptimo + 8`), y ese mismo número rige para
+    los ocho escenarios.
+
+    El parámetro se mantiene por compatibilidad con las llamadas existentes,
+    pero no se usa: el presupuesto no depende del escenario.
     """
-    return 2 * OPTIMOS.get(escenario_id, 10) + 8
+    return 2 * max(OPTIMOS.values()) + 8
 
 
 @dataclass(frozen=True)
@@ -69,8 +75,12 @@ class Condicion:
 #: mundo. Todos los experimentos se comparan contra esta.
 BASELINE = Condicion(
     nombre="baseline",
-    descripcion="Prompt especializado, ventana amplia (50 mensajes).",
-    overrides={"system_prompt": PROMPT_SALA_DE_ESCAPE, "max_history_messages": 50},
+    descripcion="Prompt especializado, ventana de 50 mensajes, memoria de acciones.",
+    overrides={
+        "system_prompt": PROMPT_SALA_DE_ESCAPE,
+        "max_history_messages": 50,
+        "memoria_de_acciones": True,
+    },
 )
 
 #: E1 — presupuesto de memoria. Mide el trabajo de M2: qué pasa cuando la

@@ -26,6 +26,13 @@ RAIZ = Path(__file__).resolve().parent.parent
 if str(RAIZ) not in sys.path:
     sys.path.insert(0, str(RAIZ))
 
+# El proveedor puede venir de un `.env` en vez de variables exportadas (es lo
+# que documenta el scaffold). Hay que levantarlo ANTES de verificar nada, o
+# `os.environ` se ve vacío y la evaluación aborta con un falso negativo.
+from mia_agents._env import load_env_files  # noqa: E402
+
+load_env_files()
+
 from eval.config import (  # noqa: E402
     BASELINE,
     DIR_RESULTADOS,
