@@ -777,3 +777,66 @@ def test_memoria_no_consume_presupuesto_de_ventana():
     for llamada in mock.calls:
         assert len(llamada["messages"]) <= 4, "el tope de la ventana sigue rigiendo"
     assert len(mock.calls[-1]["system"]) > len("BASE."), "y la memoria llegó igual"
+
+
+def test_accion_improductiva_avisa_pero_no_altera_el_step():
+    """Repetir una acción con resultado idéntico agrega un aviso al mensaje
+    que ve el modelo, pero el `AgentStep` conserva la salida exacta de la
+    herramienta (contrato de M1)."""
+    tool, schema = make_recording_tool(return_value="siempre lo mismo")
+    mock = MockLLMClient(
+        [
+            _llamada_a(schema.name, {"text": "x"}, "c1"),
+            _llamada_a(schema.name, {"text": "x"}, "c2"),
+            LLMResponse(content="ok"),
+        ]
+    )
+    agent = build_agent({"llm_client": mock, "memoria_de_acciones": True})
+    agent.register_tool(tool, schema)
+    result = agent.run("dale")
+
+    assert [s.tool_output for s in result.steps] == ["siempre lo mismo"] * 2, (
+        "el AgentStep debe guardar el valor exacto que devolvió la tool"
+    )
+    mensajes_tool = [
+        m for m in mock.calls[-1]["messages"] if m.get("role") == "tool"
+    ]
+    assert "AVISO DEL SISTEMA" not in mensajes_tool[0]["content"], (
+        "la primera vez no hay nada que avisar"
+    )
+    assert "AVISO DEL SISTEMA" in mensajes_tool[1]["content"], (
+        "la repetición idéntica sí debe avisarse"
+    )
+
+
+def test_misma_accion_con_resultado_distinto_no_se_marca():
+    """`look()` después de moverse de sala devuelve otra cosa: eso NO es una
+    repetición improductiva y no debe desalentarse."""
+    from typing import Annotated
+
+    from pydantic import Field
+
+    from mia_agents.types import ToolSchema
+
+    salidas = iter(["sala A", "sala B"])
+
+    def mirar() -> str:
+        """Describe la sala actual."""
+        return next(salidas)
+
+    schema = ToolSchema.from_callable(mirar)
+    mock = MockLLMClient(
+        [
+            LLMResponse(content=None, tool_calls=[ToolCall(id="c1", name="mirar", arguments="{}")]),
+            LLMResponse(content=None, tool_calls=[ToolCall(id="c2", name="mirar", arguments="{}")]),
+            LLMResponse(content="ok"),
+        ]
+    )
+    agent = build_agent({"llm_client": mock, "memoria_de_acciones": True})
+    agent.register_tool(mirar, schema)
+    agent.run("dale")
+
+    mensajes_tool = [m for m in mock.calls[-1]["messages"] if m.get("role") == "tool"]
+    assert all("AVISO DEL SISTEMA" not in m["content"] for m in mensajes_tool), (
+        "misma firma con resultado distinto es información nueva, no un bucle"
+    )

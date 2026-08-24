@@ -335,7 +335,7 @@ class MyAgent:
             self._history.append(self._assistant_turn(response))
             for call in response.tool_calls:
                 output, error = self._dispatch(call)
-                self._registrar_accion(call, output, error)
+                improductiva = self._registrar_accion(call, output, error)
                 steps.append(
                     AgentStep(
                         tool_name=call.name,
@@ -346,11 +346,18 @@ class MyAgent:
                 )
                 # Realimentamos el resultado (o el error) al LLM como un
                 # mensaje `role: "tool"` antes de volver a llamar a `chat`.
+                # Si la acción fue improductiva le adjuntamos un aviso: el
+                # `AgentStep` de arriba conserva la salida EXACTA de la
+                # herramienta (contrato de M1); lo que se enriquece es solo
+                # lo que ve el modelo.
+                contenido = output if error is None else error
+                if improductiva:
+                    contenido = f"{contenido}{self._AVISO_IMPRODUCTIVA}"
                 self._history.append(
                     {
                         "role": "tool",
                         "tool_call_id": call.id,
-                        "content": output if error is None else error,
+                        "content": contenido,
                     }
                 )
 
@@ -398,7 +405,7 @@ class MyAgent:
         if not self._acciones:
             return ""
         fallidas, exitosas = [], []
-        for (herramienta, args), (veces, desenlace) in self._acciones.items():
+        for (herramienta, args), (veces, desenlace, _salida) in self._acciones.items():
             repeticion = f" [ya intentada {veces} veces]" if veces > 1 else ""
             linea = f"  - {herramienta}({args}) -> {desenlace}{repeticion}"
             (fallidas if desenlace.startswith("ERROR") else exitosas).append(linea)
@@ -420,20 +427,45 @@ class MyAgent:
             )
         return "\n\n" + "\n\n".join(partes)
 
-    def _registrar_accion(self, call: ToolCall, salida: str | None, error: str | None) -> None:
-        """Anota una invocación en la memoria de acciones, deduplicando."""
+    def _registrar_accion(
+        self, call: ToolCall, salida: str | None, error: str | None
+    ) -> bool:
+        """Anota una invocación en la memoria. Devuelve si fue improductiva.
+
+        "Improductiva" = esta misma llamada, con los mismos argumentos, ya se
+        había hecho antes **y devolvió exactamente lo mismo**. Comparar la
+        salida y no solo la firma es lo que hace correcta la detección: en un
+        escenario multi-sala, `look()` repetido devuelve algo DISTINTO después
+        de un `go`, y prohibirlo por firma rompería la navegación. Si el texto
+        es idéntico, en cambio, la acción no aportó información nueva.
+
+        Es el modo de fallo dominante que medimos: 4 de 6 fracasos con Nova
+        Lite fueron `look()` repetido entre 21 y 48 veces.
+        """
         if not self._memoria_de_acciones:
-            return
+            return False
         texto = error or salida or ""
-        if error or texto.startswith("Error"):
-            desenlace = f"ERROR: {texto[:90]}"
-        else:
-            desenlace = f"ok: {texto[:90]}"
+        fallo = bool(error) or texto.startswith("Error")
+        desenlace = f"{'ERROR' if fallo else 'ok'}: {texto[:90]}"
         clave = (call.name, (call.arguments or "").strip())
-        if clave in self._acciones:
-            self._acciones[clave][0] += 1
-        else:
-            self._acciones[clave] = [1, desenlace]
+
+        anterior = self._acciones.get(clave)
+        if anterior is None:
+            self._acciones[clave] = [1, desenlace, texto]
+            return False
+        anterior[0] += 1
+        anterior[1] = desenlace
+        improductiva = anterior[2] == texto
+        anterior[2] = texto
+        return improductiva
+
+    #: Aviso que se adjunta al resultado cuando una acción no aportó nada.
+    _AVISO_IMPRODUCTIVA = (
+        "\n\n[AVISO DEL SISTEMA: esta acción ya la ejecutaste antes y devolvió "
+        "EXACTAMENTE lo mismo. No aportó información nueva. Dejá de repetirla y "
+        "elegí una acción diferente: examiná algo que todavía no examinaste, "
+        "tomá un objeto que hayas encontrado, o usá algo de tu inventario.]"
+    )
 
     def _system_efectivo(self) -> str:
         """System prompt más la memoria de acciones, si está habilitada."""
