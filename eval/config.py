@@ -127,10 +127,39 @@ E3_ACCIONES = [
     ),
 ]
 
+#: E4 — presupuesto de pasos. El enunciado sugiere "reducir max steps" como
+#: experimento; medimos también el inverso, porque 10 de 14 éxitos de
+#: office-sequence terminaron exactamente en el techo de 50: si el tope está
+#: cortando corridas que iban a resolver, subirlo debería mover la tasa.
+E4_PRESUPUESTO = [
+    BASELINE,
+    Condicion(
+        nombre="presupuesto_100",
+        descripcion="Baseline con el doble de iteraciones (100).",
+        overrides={
+            "system_prompt": PROMPT_SALA_DE_ESCAPE,
+            "max_history_messages": 50,
+            "memoria_de_acciones": False,
+            "max_iterations": 100,
+        },
+    ),
+    Condicion(
+        nombre="presupuesto_25",
+        descripcion="Baseline con la mitad de iteraciones (25).",
+        overrides={
+            "system_prompt": PROMPT_SALA_DE_ESCAPE,
+            "max_history_messages": 50,
+            "memoria_de_acciones": False,
+            "max_iterations": 25,
+        },
+    ),
+]
+
 EXPERIMENTOS: dict[str, list[Condicion]] = {
     "e1-memoria": E1_MEMORIA,
     "e2-prompt": E2_PROMPT,
     "e3-acciones": E3_ACCIONES,
+    "e4-presupuesto": E4_PRESUPUESTO,
 }
 
 
@@ -162,6 +191,16 @@ HIPOTESIS: dict[str, str] = {
         "repetición no baje — indicaría que el agente sí ve sus intentos "
         "previos y aun así insiste, o sea que el problema es de razonamiento "
         "y no de memoria."
+    ),
+    "e4-presupuesto": (
+        "Los éxitos de office-sequence se acumulan exactamente en el techo de "
+        "50 pasos (10 de 14), lo que sugiere que el tope está cortando "
+        "corridas que iban camino a resolver. Si es así, duplicarlo a 100 debe "
+        "subir la tasa de éxito y bajarla a 25 debe hundirla. Refutaría la "
+        "hipótesis que 100 no mejore: significaría que las corridas que agotan "
+        "el presupuesto ya están cicladas y más pasos solo son más repetición "
+        "(los fracasos hacen 50 pasos con apenas 7-8 acciones distintas, así "
+        "que esta refutación es plausible)."
     ),
     "e2-prompt": (
         "El prompt genérico del framework produce conducta de asistente "
