@@ -906,3 +906,82 @@ def test_bloqueo_apagado_por_defecto():
     agent.run("dale")
 
     assert len(tool.calls) == 3, "sin el flag, nada se bloquea"
+
+
+# ---------------------------------------------------------------------------
+# Planificación previa (M3)
+# ---------------------------------------------------------------------------
+
+
+def _plan_valido(call_id: str = "p1") -> LLMResponse:
+    return LLMResponse(
+        content=None,
+        tool_calls=[
+            ToolCall(
+                id=call_id,
+                name=FINAL_RESULT_TOOL_NAME,
+                arguments=json.dumps(
+                    {"objetivo": "abrir la puerta", "pasos": ["mirar", "tomar la llave"]}
+                ),
+            )
+        ],
+    )
+
+
+def test_planificar_apagado_por_defecto():
+    mock = MockLLMClient([LLMResponse(content="ok")])
+    agent = build_agent({"llm_client": mock, "system_prompt": "BASE."})
+    agent.run("resolvé la sala")
+
+    assert mock.call_count == 1, "sin el flag no debe pedirse ningún plan"
+    assert mock.calls[0]["system"] == "BASE."
+
+
+def test_el_plan_viaja_en_el_system_no_en_los_mensajes():
+    """El plan va por `system=`, fuera del presupuesto de la ventana: esa es
+    toda la razón de ser del diseño."""
+    mock = MockLLMClient([_plan_valido(), LLMResponse(content="ok")])
+    agent = build_agent(
+        {"llm_client": mock, "system_prompt": "BASE.", "planificar": True}
+    )
+    agent.run("resolvé la sala")
+
+    # calls[0] = planificación; calls[1] = primera vuelta del bucle
+    system_bucle = mock.calls[1]["system"]
+    assert "TU PLAN" in system_bucle
+    assert "tomar la llave" in system_bucle
+    assert "tomar la llave" not in str(mock.calls[1]["messages"]), (
+        "el plan no debe ocupar lugar en la lista de mensajes"
+    )
+
+
+def test_el_plan_se_pide_una_sola_vez():
+    """Replanificar en cada turno costaría una llamada por iteración."""
+    mock = MockLLMClient(
+        [_plan_valido(), LLMResponse(content="r1"), LLMResponse(content="r2")]
+    )
+    agent = build_agent({"llm_client": mock, "planificar": True})
+    agent.run("primer turno")
+    agent.run("segundo turno")
+
+    assert mock.call_count == 3, "1 planificación + 2 turnos, no 2 planificaciones"
+
+
+def test_si_falla_la_planificacion_el_agente_sigue():
+    """Un agente sin plan es el comportamiento anterior, que funciona el 80%
+    de las veces: que el plan no salga no puede ser peor que no intentarlo."""
+    mock = MockLLMClient(
+        [
+            LLMResponse(content="no pienso planificar"),
+            LLMResponse(content="tampoco"),
+            LLMResponse(content="ni ahí"),
+            LLMResponse(content="pero igual resuelvo"),
+        ]
+    )
+    agent = build_agent(
+        {"llm_client": mock, "system_prompt": "BASE.", "planificar": True}
+    )
+    result = agent.run("resolvé la sala")
+
+    assert result.answer == "pero igual resuelvo"
+    assert mock.calls[-1]["system"] == "BASE.", "sin plan, el system queda intacto"

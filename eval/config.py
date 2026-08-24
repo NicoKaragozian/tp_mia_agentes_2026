@@ -178,12 +178,29 @@ E5_BLOQUEO = [
     ),
 ]
 
+#: E6 — planificación explícita. Único intento arquitectónico: en vez de
+#: ajustar un parámetro del bucle reactivo, el agente escribe un plan de
+#: sub-objetivos antes de empezar y lo mantiene en el system prompt.
+E6_PLANNER = [
+    BASELINE,
+    Condicion(
+        nombre="con_planner",
+        descripcion="Baseline que planifica sub-objetivos antes de actuar.",
+        overrides={
+            "system_prompt": PROMPT_SALA_DE_ESCAPE,
+            "max_history_messages": 50,
+            "planificar": True,
+        },
+    ),
+]
+
 EXPERIMENTOS: dict[str, list[Condicion]] = {
     "e1-memoria": E1_MEMORIA,
     "e2-prompt": E2_PROMPT,
     "e3-acciones": E3_ACCIONES,
     "e4-presupuesto": E4_PRESUPUESTO,
     "e5-bloqueo": E5_BLOQUEO,
+    "e6-planner": E6_PLANNER,
 }
 
 
@@ -236,6 +253,20 @@ HIPOTESIS: dict[str, str] = {
         "el agente, bloqueado en una acción, simplemente cicla entre otras "
         "acciones igual de estériles, y que el problema no es la repetición "
         "sino que no se le ocurre qué más hacer."
+    ),
+    "e6-planner": (
+        "Siete intervenciones sobre el bucle reactivo no movieron la tasa de "
+        "éxito. E5 mostró por qué: el agente no falla porque repita, repite "
+        "porque se quedó sin ideas, y bloquearle caminos no le crea uno nuevo. "
+        "La hipótesis es que un plan de sub-objetivos escrito ANTES de actuar "
+        "—y sostenido en el system prompt, fuera del presupuesto de la "
+        "ventana, así sigue visible cuando el historial ya se recortó— le da "
+        "al agente adónde ir cuando se queda sin ideas, y sube la tasa de "
+        "éxito por encima del 80% del baseline. El enunciado sugiere este "
+        "camino para office-sequence, cuya meta es compuesta y ordenada. "
+        "Refutaría la hipótesis que la tasa no suba: significaría que el "
+        "problema no es la falta de un plan sino la incapacidad del modelo "
+        "para ejecutarlo, y que ninguna estructura que le demos alcanza."
     ),
     "e2-prompt": (
         "El prompt genérico del framework produce conducta de asistente "

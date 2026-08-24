@@ -173,6 +173,7 @@ class MyAgent:
         retry_base_delay: float = 0.2,
         memoria_de_acciones: bool = False,
         bloquear_repeticiones: bool = False,
+        planificar: bool = False,
     ) -> None:
         """Inicializa el agente.
 
@@ -206,6 +207,11 @@ class MyAgent:
             Si es `True`, el agente se niega a ejecutar una llamada que ya
             demostró ser improductiva. Ver `_es_repeticion_esteril`.
             Apagado por defecto.
+        planificar : bool
+            Si es `True`, antes de entrar al bucle el agente escribe un plan
+            de sub-objetivos con `structured_call` y lo mantiene en el system
+            prompt durante toda la corrida. Ver `_preparar_plan`.
+            Apagado por defecto.
         """
         # Validación de la configuración. El caso interesante es
         # `max_history_messages`: un tope de 0 (o negativo) es CONTRADICTORIO
@@ -234,6 +240,9 @@ class MyAgent:
         self._retry_base_delay = retry_base_delay
         self._memoria_de_acciones = memoria_de_acciones
         self._bloquear_repeticiones = bloquear_repeticiones
+        self._planificar = planificar
+        #: Bloque de texto del plan vigente, o "" si no se planificó.
+        self._plan_texto: str = ""
         #: (herramienta, argumentos) -> [veces, desenlace resumido]
         self._acciones: dict[tuple[str, str], list[Any]] = {}
         # Memoria de la conversación (M2). Historial completo y persistente
@@ -289,6 +298,7 @@ class MyAgent:
         tokens quedan en `None`; si alguno reportó, se suma tratando los
         `None` por-respuesta como 0 (regla del docstring de `AgentResult`).
         """
+        self._preparar_plan(user_message)
         self._history.append({"role": "user", "content": user_message})
         steps: list[AgentStep] = []
         tokens_entrada = 0
@@ -478,10 +488,57 @@ class MyAgent:
     )
 
     def _system_efectivo(self) -> str:
-        """System prompt más la memoria de acciones, si está habilitada."""
-        if not self._memoria_de_acciones:
-            return self._system
-        return self._system + self._bloque_de_acciones()
+        """System prompt, más el plan y la memoria de acciones si están activos.
+
+        Ambos anexos viajan por `system=`, o sea FUERA del presupuesto de la
+        ventana deslizante. Esa es toda la idea: siguen visibles justo cuando
+        el historial ya se recortó, que es cuando aparecen los bucles.
+        """
+        partes = [self._system, self._plan_texto]
+        if self._memoria_de_acciones:
+            partes.append(self._bloque_de_acciones())
+        return "".join(p for p in partes if p)
+
+    def _preparar_plan(self, user_message: str) -> None:
+        """Pide un plan de sub-objetivos antes de tocar el mundo.
+
+        Usa `structured_call` (M2), así que el plan vuelve validado contra un
+        schema Pydantic y con reparación automática. Se pide UNA sola vez por
+        instancia: replanificar en cada turno costaría una llamada extra por
+        iteración y el plan quedaría sujeto al mismo ruido que queremos evitar.
+
+        Si el planificador falla, se sigue sin plan: un agente sin plan es el
+        comportamiento anterior, que funciona el 80% de las veces. Que el
+        plan no salga no puede ser peor que no haberlo intentado.
+        """
+        if not self._planificar or self._plan_texto:
+            return
+        from student_framework.planner import (
+            PROMPT_PLANIFICAR,
+            SYSTEM_PLANIFICADOR,
+            Plan,
+            bloque_de_plan,
+        )
+
+        # El planificador corre en su propio agente para no ensuciar la
+        # conversación del bucle con el intercambio de planificación.
+        planificador = MyAgent(
+            llm_client=self._llm,
+            system_prompt=SYSTEM_PLANIFICADOR,
+            max_retries=self._max_retries,
+            retry_base_delay=self._retry_base_delay,
+        )
+        try:
+            plan = planificador.structured_call(
+                prompt=PROMPT_PLANIFICAR.format(
+                    consigna=user_message,
+                    herramientas=", ".join(sorted(self._schemas)) or "(ninguna)",
+                ),
+                schema=Plan,
+            )
+        except Exception:  # noqa: BLE001 — sin plan se sigue igual
+            return
+        self._plan_texto = bloque_de_plan(plan)
 
     def _ventana(
         self,
