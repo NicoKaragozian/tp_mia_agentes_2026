@@ -4,6 +4,15 @@ Aplicación del framework de M1+M2 a un problema objetivo (mundo simulado tipo
 sala de escape), con infraestructura de evaluación reproducible, métricas
 cuantitativas y cualitativas, análisis de errores y dos experimentos.
 
+> **Dos campañas de medición.** Este informe contiene resultados de dos
+> modelos. La primera campaña se corrió con `llama3.1:8b` sobre Ollama local
+> (secciones 3.1–3.5 y experimentos E1–E2). Al conocerse que el criterio de
+> aprobación exige **Amazon Nova Lite sobre Bedrock**, se repitió todo con ese
+> modelo: los resultados vigentes son los de la sección **3.6**, y los
+> experimentos **E3–E5**. Los de llama3.1 se conservan porque la comparación
+> entre ambos modelos resultó ser el hallazgo más importante del milestone
+> (sección 3.6.3).
+
 Todo lo que sigue se reproduce con:
 
 ```bash
@@ -328,6 +337,68 @@ métrica dura e independiente (`check_goal` sobre el estado del mundo) es lo que
 permitió detectar el desacople. Con el juez solo, habríamos concluido que
 recortar la memoria mejora al agente.
 
+### 3.6. Resultados con Nova Lite (campaña vigente)
+
+Modelo `amazon.nova-lite-v1:0` sobre Bedrock, que es el que exige el criterio
+de aprobación. Configuración única para los ocho escenarios: prompt
+especializado, ventana de 50 mensajes, presupuesto de 100 iteraciones.
+
+#### 3.6.1. El número principal
+
+Sobre **100 corridas** (dos mediciones independientes de 50, que dieron 80% las
+dos):
+
+| Escenario | Dificultad | Éxito |
+|---|---|---|
+| study-with-key | easy | 19/20 (95 %) |
+| color-locks | medium | 15/20 (75 %) |
+| apartment-keys | medium | 16/20 (80 %) |
+| library-search | hard | 14/20 (70 %) |
+| office-sequence | hard | 16/20 (80 %) |
+| **Global** | | **80/100 = 80 %** (IC95 % 72–88 %) |
+
+#### 3.6.2. Contra el criterio de aprobación
+
+El criterio pide que el mismo agente resuelva todos los escenarios hasta hard
+con Nova Lite, sin trucos por escenario. Punto por punto:
+
+| Requisito | Estado |
+|---|---|
+| Amazon Nova Lite sobre Bedrock | Cumplido |
+| Sin trucos por escenario | Cumplido y verificable: `presupuesto_iteraciones()` devuelve una constante para los ocho escenarios y el system prompt no nombra ningún objeto ni escenario concreto |
+| El mismo agente en los tres niveles | Cumplido: una única configuración |
+| Resolver todos los escenarios hasta hard | **No de forma confiable** |
+
+**No cumplimos el criterio.** Ningún escenario llega al 100 %, ni siquiera el
+`easy`. Con estas tasas, la probabilidad de resolver los cinco en una misma
+pasada es del **32 %**.
+
+Lo decimos así porque hubo corridas donde los cinco salieron: presentar esa
+tanda como resultado sería confundir una muestra afortunada con una medición.
+Con n=100 el número es 80 %.
+
+#### 3.6.3. El modelo domina sobre el framework
+
+Este es el hallazgo central de la campaña. Los modos de fallo cambian
+**cualitativamente** al cambiar de modelo:
+
+| Modo de fallo | llama3.1:8b | Nova Lite |
+|---|---|---|
+| bucle | 46 % de los fracasos | **100 %** |
+| tool_call_en_texto | 33 % | **0 %** (0 de 139 corridas) |
+| acción inválida / parada prematura / otros | 21 % | 0 % |
+
+`tool_call_en_texto` —el modelo escribiendo `{"name": "look"}` como texto en
+vez de invocar la herramienta— **desaparece por completo**. Era un fallo de
+modelo chico, no un problema de nuestro bucle. Ese dato retrospectivamente
+valida la decisión de documentarlo en lugar de tolerarlo modificando la
+condición de parada de M1: el "arreglo" habría sido código muerto con el
+modelo del criterio.
+
+Y la tasa de éxito pasa de 25 % a 80 % **sin tocar una línea del framework**.
+Ninguna de las siete intervenciones que probamos después (sección 4) se acercó
+a ese efecto.
+
 ---
 
 ## 4. Experimentos
@@ -427,6 +498,99 @@ Un detalle contraintuitivo: el prompt genérico consume **menos** tokens de
 entrada (16 613 contra 29 320). No es una virtud — refleja que sus corridas
 mueren antes y con contextos más chicos. Mide fracaso, no eficiencia; por eso
 el costo nunca se lee sin la tasa de éxito al lado.
+
+
+### 4.3. E3 — Memoria de acciones ejecutadas
+
+Registro deduplicado de `(herramienta, argumentos) -> desenlace`, inyectado en
+el system prompt. Va en `system=`, así que **no consume presupuesto de la
+ventana deslizante** — esa era la gracia frente a simplemente agrandarla.
+
+Es la memoria episódica que la versión anterior de este informe proponía como
+trabajo futuro, y que en clase se había discutido como idea. A/B con 25
+corridas por rama:
+
+| Condición | Éxito | Repetidas | Tokens de entrada |
+|---|---|---|---|
+| baseline | 18/25 (72 %) | 37 % | 89 595 |
+| con memoria de acciones | 18/25 (72 %) | 41 % | 136 515 |
+
+**Hipótesis refutada.** Idéntica tasa de éxito y **52 % más tokens**. La idea
+era razonable y la implementación funciona (hay tests que verifican que
+deduplica, que separa fallidas de exitosas y que no toca el presupuesto de la
+ventana); simplemente no sirve para este problema. Queda apagada por defecto.
+
+### 4.4. E4 — Presupuesto de pasos
+
+El enunciado sugiere "reducir max steps" como experimento; medimos también el
+inverso, porque los éxitos de `office-sequence` se acumulaban exactamente en el
+techo de 50 pasos, señal de que el tope podía estar cortando corridas que iban
+camino a resolver. Ocho corridas por celda sobre los dos escenarios más
+difíciles:
+
+| Presupuesto | office-sequence | color-locks | Global |
+|---|---|---|---|
+| 25 | 3/8 | 3/8 | 38 % |
+| 50 | 7/8 | 2/8 | 56 % |
+| 100 | 7/8 | 6/8 | **81 %** |
+
+La tendencia monótona en tres niveles nos llevó a adoptar 100. **Pero la
+medición completa posterior mostró que el global no se movió**: los fracasos se
+redistribuyeron entre escenarios (`office-sequence` 44 %→80 %, `library-search`
+90 %→50 %) sin cambiar el total. Es el ejemplo más claro de la limitación
+metodológica de la sección 5: con ocho corridas por celda, lo que parecía una
+mejora era reordenamiento del ruido.
+
+### 4.5. E5 — Bloqueo de repeticiones estériles
+
+El 100 % de los fracasos con Nova Lite son bucles, y avisarle al modelo no
+había servido (E3). Acá directamente se le **impide ejecutar** una llamada que
+ya demostró ser estéril.
+
+El diseño tiene un detalle que vale la pena: no se puede saber si una llamada
+devolverá lo mismo sin ejecutarla, y ejecutar no es gratis (`take`, `use` y
+`go` mutan el mundo). Por eso el bloqueo actúa recién a la **tercera**
+ejecución idéntica, cuando la segunda ya comprobó empíricamente que el
+resultado no cambia — y la marca **se levanta sola** si el resultado vuelve a
+cambiar, que es lo que evita romper la navegación multi-sala (`look()` tras un
+`go` devuelve otra descripción).
+
+Cincuenta corridas por rama:
+
+| Condición | Éxito | Pasos medios | Bloqueos aplicados |
+|---|---|---|---|
+| baseline | 40/50 (80 %) | 43.8 | 0 |
+| con bloqueo | 35/50 (70 %) | 48.7 | 550 |
+
+**Hipótesis refutada**, y de la forma exacta que habíamos anticipado por
+escrito: *"el agente, bloqueado en una acción, cicla entre otras igual de
+estériles"*. El mecanismo se disparó 550 veces y no mejoró nada.
+
+La conclusión que deja es más valiosa que el resultado: **el agente no falla
+porque repita; repite porque se quedó sin ideas.** Bloquearle caminos no le
+crea uno nuevo.
+
+### 4.6. Qué dicen los cinco experimentos juntos
+
+| | Intervención | Efecto sobre la tasa de éxito |
+|---|---|---|
+| — | Cambiar llama3.1 por Nova Lite | **25 % → 80 %** |
+| E1 | Recortar la ventana de contexto | negativo (colapso con ventana chica) |
+| E2 | Prompt especializado vs genérico | positivo con llama3.1 |
+| E3 | Memoria de acciones | ninguno, +52 % tokens |
+| E4 | Presupuesto de pasos | ninguno sobre el global |
+| E5 | Bloqueo de repeticiones | ninguno (−10 pts, dentro del error) |
+
+Además de estos cinco se probaron dos variantes de refuerzo del prompt y una
+ventana de 160 mensajes; ninguna tuvo efecto medible, y la ventana grande fue
+claramente peor (74 % de llamadas repetidas: más contexto diluye la atención).
+
+La respuesta a la pregunta del enunciado —*qué partes del framework importan
+para este problema*— es incómoda y está medida sobre más de 400 corridas: **la
+elección del modelo dominó sobre todas las decisiones de framework que
+probamos**. Las piezas de M2 no son inútiles (la ventana chica hunde al agente,
+el prompt genérico también), pero una vez en un régimen razonable, moverlas no
+cambia el resultado.
 
 ---
 
