@@ -110,9 +110,27 @@ E2_PROMPT = [
     BASELINE,
 ]
 
+#: E3 — memoria de acciones. Mide si el registro compacto de lo ya ejecutado,
+#: inyectado en el system prompt (fuera del presupuesto de la ventana),
+#: reduce el bucle. Es la memoria episódica que el informe del M3 había
+#: dejado anotada como trabajo futuro.
+E3_ACCIONES = [
+    Condicion(
+        nombre="sin_memoria_acciones",
+        descripcion="Baseline sin el registro de acciones ejecutadas.",
+        overrides={
+            "system_prompt": PROMPT_SALA_DE_ESCAPE,
+            "max_history_messages": 50,
+            "memoria_de_acciones": False,
+        },
+    ),
+    BASELINE,
+]
+
 EXPERIMENTOS: dict[str, list[Condicion]] = {
     "e1-memoria": E1_MEMORIA,
     "e2-prompt": E2_PROMPT,
+    "e3-acciones": E3_ACCIONES,
 }
 
 
@@ -131,6 +149,19 @@ HIPOTESIS: dict[str, str] = {
         "repetición no cambie (el bucle vendría de la política del modelo, no "
         "de la memoria) o que una ventana más chica ayude (menos contexto, "
         "menos distracción)."
+    ),
+    "e3-acciones": (
+        "El bucle es el modo de fallo dominante y su causa medida es que el "
+        "agente pierde de vista lo que ya intentó: una corrida larga genera "
+        "más mensajes de los que entran en la ventana. Agrandar la ventana no "
+        "sirve (con 160 mensajes la repetición subió a 74%: más contexto "
+        "diluye la atención). La hipótesis es que un registro DEDUPLICADO de "
+        "acciones ya ejecutadas, inyectado en el system prompt y por lo tanto "
+        "fuera del presupuesto de la ventana, baja la fracción de llamadas "
+        "repetidas y sube la tasa de éxito. Refutaría la hipótesis que la "
+        "repetición no baje — indicaría que el agente sí ve sus intentos "
+        "previos y aun así insiste, o sea que el problema es de razonamiento "
+        "y no de memoria."
     ),
     "e2-prompt": (
         "El prompt genérico del framework produce conducta de asistente "

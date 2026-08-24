@@ -674,3 +674,106 @@ def test_presupuesto_minimo_envia_solo_el_ultimo_user():
         assert len(messages) == 1
         assert messages[0]["role"] == "user"
     assert "dos" in mock.calls[-1]["messages"][0]["content"]
+
+
+# ---------------------------------------------------------------------------
+# Memoria de acciones (M3): registro compacto en el system prompt
+# ---------------------------------------------------------------------------
+
+
+def _llamada_a(nombre: str, args: dict, call_id: str = "c1") -> LLMResponse:
+    return LLMResponse(
+        content=None,
+        tool_calls=[ToolCall(id=call_id, name=nombre, arguments=json.dumps(args))],
+    )
+
+
+def test_memoria_de_acciones_apagada_por_defecto():
+    """El comportamiento de M1 y M2 no cambia si no se pide explícitamente."""
+    tool, schema = make_recording_tool()
+    mock = MockLLMClient([_llamada_a(schema.name, {"text": "x"}), LLMResponse(content="ok")])
+    agent = build_agent({"llm_client": mock, "system_prompt": "BASE."})
+    agent.register_tool(tool, schema)
+    agent.run("dale")
+
+    assert mock.calls[-1]["system"] == "BASE.", "sin pedirlo, el system no se toca"
+
+
+def test_memoria_registra_lo_ejecutado_en_el_system():
+    tool, schema = make_recording_tool(return_value="resultado")
+    mock = MockLLMClient([_llamada_a(schema.name, {"text": "x"}), LLMResponse(content="ok")])
+    agent = build_agent(
+        {"llm_client": mock, "system_prompt": "BASE.", "memoria_de_acciones": True}
+    )
+    agent.register_tool(tool, schema)
+    agent.run("dale")
+
+    system = mock.calls[-1]["system"]
+    assert system.startswith("BASE."), "el prompt original se conserva al inicio"
+    assert schema.name in system
+    assert "resultado" in system
+
+
+def test_memoria_separa_fallidas_de_exitosas():
+    """Las que fallaron van en su propia sección: son las que el agente
+    tiende a reintentar en bucle."""
+    tool, schema = make_recording_tool()
+    mock = MockLLMClient(
+        [
+            _llamada_a("inexistente", {}, "c1"),
+            _llamada_a(schema.name, {"text": "x"}, "c2"),
+            LLMResponse(content="ok"),
+        ]
+    )
+    agent = build_agent(
+        {"llm_client": mock, "system_prompt": "BASE.", "memoria_de_acciones": True}
+    )
+    agent.register_tool(tool, schema)
+    agent.run("dale")
+
+    system = mock.calls[-1]["system"]
+    assert "YA FALLARON" in system and "CON ÉXITO" in system
+    assert system.index("YA FALLARON") < system.index("CON ÉXITO"), (
+        "las fallidas van primero, que es lo que hay que dejar de repetir"
+    )
+
+
+def test_memoria_deduplica_y_cuenta_repeticiones():
+    """Diez llamadas idénticas ocupan una línea, no diez."""
+    tool, schema = make_recording_tool()
+    mock = MockLLMClient(
+        [_llamada_a(schema.name, {"text": "x"}, f"c{i}") for i in range(4)]
+        + [LLMResponse(content="ok")]
+    )
+    agent = build_agent(
+        {"llm_client": mock, "system_prompt": "BASE.", "memoria_de_acciones": True}
+    )
+    agent.register_tool(tool, schema)
+    agent.run("dale")
+
+    system = mock.calls[-1]["system"]
+    assert system.count(f"- {schema.name}(") == 1, "la acción repetida aparece una vez"
+    assert "ya intentada 4 veces" in system
+
+
+def test_memoria_no_consume_presupuesto_de_ventana():
+    """Va en `system=`, fuera de la lista `messages`: ese es el punto."""
+    tool, schema = make_recording_tool()
+    mock = MockLLMClient(
+        [_llamada_a(schema.name, {"text": "x"}, f"c{i}") for i in range(3)]
+        + [LLMResponse(content="ok")]
+    )
+    agent = build_agent(
+        {
+            "llm_client": mock,
+            "system_prompt": "BASE.",
+            "memoria_de_acciones": True,
+            "max_history_messages": 4,
+        }
+    )
+    agent.register_tool(tool, schema)
+    agent.run("dale")
+
+    for llamada in mock.calls:
+        assert len(llamada["messages"]) <= 4, "el tope de la ventana sigue rigiendo"
+    assert len(mock.calls[-1]["system"]) > len("BASE."), "y la memoria llegó igual"
