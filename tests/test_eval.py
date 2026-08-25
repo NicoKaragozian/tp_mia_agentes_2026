@@ -10,7 +10,13 @@ from __future__ import annotations
 
 import pytest
 
-from eval.analysis import clasificar, fraccion_repetidas, modo_principal, resumen_modos
+from eval.analysis import (
+    clasificar,
+    fraccion_repetidas,
+    modo_principal,
+    resumen_modos,
+    techo_contexto,
+)
 from eval.config import OPTIMOS, presupuesto_iteraciones
 from eval.metrics import eficiencia, resumir
 
@@ -329,4 +335,36 @@ def test_las_figuras_no_leen_trazas_crudas():
     codigo = Path("eval/figuras.py").read_text(encoding="utf-8")
     assert "trazas.json" not in codigo, (
         "figuras.py debe construirse solo desde los resúmenes versionados"
+    )
+
+
+# --- techo de contexto por proveedor ----------------------------------------
+
+
+def test_techo_contexto_distingue_proveedores():
+    """El techo depende del modelo, no es una constante del problema."""
+    assert techo_contexto("ollama:llama3.1:8b") == 16_384
+    assert techo_contexto("bedrock:amazon.nova-lite-v1:0") == 300_000
+
+
+def test_techo_contexto_cae_al_mas_chico_si_no_reconoce():
+    """Ante un modelo desconocido conviene marcar de más que de menos."""
+    assert techo_contexto("proveedor:modelo-inventado") == 16_384
+    assert techo_contexto("") == 16_384
+
+
+def test_desborde_no_se_marca_con_el_techo_de_otro_proveedor():
+    """Un prompt de 16k desborda a Ollama pero no a Nova Lite.
+
+    Es el error que este cambio corrige: medir las corridas de Bedrock contra
+    el `num_ctx` que el framework le pasa a Ollama marcaba desbordes que no
+    existían.
+    """
+    llamadas = [{"input_tokens": 16_000, "output_tokens": 10}]
+    base = {"meta_lograda": False, "pasos": [], "llamadas_llm": llamadas,
+            "corte": "limite_iteraciones", "fallo_infra": False}
+
+    assert "desborde_contexto" in clasificar({**base, "modelo": "ollama:llama3.1:8b"})
+    assert "desborde_contexto" not in clasificar(
+        {**base, "modelo": "bedrock:amazon.nova-lite-v1:0"}
     )
