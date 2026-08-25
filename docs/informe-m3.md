@@ -373,21 +373,27 @@ perdieron en lugar de que desaparezcan en silencio.
 
 ### 3.3. Tasa de éxito por escenario
 
-| Escenario | Dificultad | Éxito | Intervalo de confianza aproximado (%) |
+| Escenario | Dificultad | Éxito | Intervalo de confianza al 95 % (%) |
 | :---- | :---- | :---- | :---- |
-| **study with key** | easy | 29 de 30 (97 %) | 83 a 100 |
-| **color locks** | medium | 20 de 30 (67 %) | 47 a 83 |
-| **apartment keys** | medium | 24 de 30 (80 %) | 61 a 92 |
-| **library search** | hard | 21 de 30 (70 %) | 51 a 85 |
-| **office sequence** | hard | 24 de 30 (80 %) | 61 a 92 |
-| **extreme archive** | extreme | 9 de 10 (90 %) | 60 a 99 |
-| **backtracking vault** | extreme | 2 de 10 (20 %) | 4 a 52 |
-| **vault combination** | extreme | 1 de 10 (10 %) | 1 a 40 |
-| **Total, 180 corridas** | | **130 de 180 (72 %)** | **66 a 79** |
+| **study with key** | easy | 29 de 30 (97 %) | 83 a 99 |
+| **color locks** | medium | 20 de 30 (67 %) | 49 a 81 |
+| **apartment keys** | medium | 24 de 30 (80 %) | 63 a 90 |
+| **library search** | hard | 21 de 30 (70 %) | 52 a 83 |
+| **office sequence** | hard | 24 de 30 (80 %) | 63 a 90 |
+| **extreme archive** | extreme | 9 de 10 (90 %) | 60 a 98 |
+| **backtracking vault** | extreme | 2 de 10 (20 %) | 6 a 51 |
+| **vault combination** | extreme | 1 de 10 (10 %) | 2 a 40 |
+| **Total, 180 corridas** | | **130 de 180 (72 %)** | **65 a 78** |
 
 ![Tasa de éxito por escenario](figuras/exito-por-escenario.svg)
 
-Agrupando por dificultad declarada: easy 97 %, medium 73 %, hard 75 %, extreme 40 %. Los cinco escenarios obligatorios hasta hard suman 118 de 150 (78,7 %, intervalo de 72 a 85); los tres extreme, que la consigna reserva para la competencia, bajan el promedio general a 72 %.
+Agrupando por dificultad declarada: easy 97 %, medium 73 %, hard 75 %, extreme 40 %. Los cinco escenarios obligatorios hasta hard suman 118 de 150 (78,7 %, intervalo de 71 a 84); los tres extreme, que la consigna reserva para la competencia, bajan el promedio general a 72 %.
+
+Los intervalos son de Wilson, no la aproximación normal. Con celdas de diez
+corridas y proporciones cercanas a los extremos, la aproximación normal
+produce límites fuera del rango válido: para una corrida exitosa de diez
+daría un límite inferior negativo. Wilson se mantiene dentro de cero y cien
+y es el que corresponde a este tamaño de muestra.
 
 Las 150 corridas provienen de tres mediciones independientes de 50, realizadas en
 momentos distintos de la campaña con configuración idéntica. Sus tasas globales
@@ -418,21 +424,34 @@ fallan exclusivamente por bucle, agotando el presupuesto de cien iteraciones con
 
 Además de la campaña Nova Lite de la sección anterior, se corrió antes una
 campaña independiente con la misma configuración del agente sobre llama3.1 de 8B
-de parámetros ejecutado en local con Ollama. Comparando ambas campañas, el cambio
-de modelo, por sí solo, movió la tasa de éxito global de 25 % a 78,7 %, sin
-modificar una sola línea del framework. Es un efecto mayor que el de cualquiera
-de los seis experimentos de la sección siguiente, incluso sumados.
+de parámetros ejecutado en local con Ollama.
 
-| Modo de fallo | llama3.1 8B | Nova Lite |
-| :---- | :---- | :---- |
-| **Bucle, repite acciones ya ejecutadas** | 46 % de los fracasos | 100 % |
-| **Llamada escrita como texto** | 33 % | 0 % |
-| **Otros modos combinados** | 21 % | 0 % |
+Para que la comparación sea entre iguales, todo lo que sigue se calcula sobre la
+**misma población en ambas campañas**: el brazo baseline de los experimentos E1
+y E2, que es la única configuración que se corrió completa con los dos modelos.
+Son 32 corridas con llama3.1 y 100 con Nova Lite.
+
+| | llama3.1 8B | Nova Lite |
+| :---- | ----: | ----: |
+| **Tasa de éxito** | 8 de 32 (25 %) | 70 de 100 (70 %) |
+| Bucle, repite acciones ya ejecutadas | 46 % de los fracasos | 100 % |
+| Llamada escrita como texto | 33 % | 0 % |
+| Otros modos combinados | 21 % | 0 % |
+
+El cambio de modelo, por sí solo, movió la tasa de éxito de 25 % a 70 % sin
+modificar una sola línea del framework. Es un efecto mayor que el de cualquiera
+de los seis experimentos de la sección siguiente, incluso sumados. (La campaña
+completa de Nova Lite, con la configuración final y los ocho escenarios, llega
+al 72 % que reporta la sección 3.3; el 70 % de esta tabla corresponde solo a las
+condiciones que admiten comparación directa con llama3.1.)
 
 Con Nova Lite desaparecen por completo los modos de fallo asociados a una
 disciplina débil de tool calling, y el único modo que persiste es el bucle, la
 ausencia de una condición de parada por deadlock que la materia lista entre las
-cinco canónicas.
+cinco canónicas. Sobre la campaña completa de Nova Lite, que incluye los
+escenarios extreme, la proporción es de 97 % de bucle y 3 % de desborde de
+contexto: las tres corridas de este último modo aparecen todas en extreme
+archive, el único escenario del dataset que se acerca al techo de la ventana.
 
 El cambio de modelo no solo mueve el número agregado, cambia qué conclusiones se
 obtienen de los experimentos. Los experimentos E1 y E2 se corrieron completos

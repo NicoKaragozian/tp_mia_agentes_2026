@@ -269,15 +269,38 @@ def fig_exito_por_escenario() -> None:
 
 
 def fig_eficiencia() -> None:
-    """Llegar no es lo mismo que llegar bien. (sección 3.5)"""
-    s = _resumen("nova-final")["por_escenario"]
+    """Llegar no es lo mismo que llegar bien. (sección 3.5)
+
+    Agrupa las mismas campañas que la figura de tasa de éxito. Usar una sola
+    campaña daría números distintos de los de la tabla del informe, que está
+    calculada sobre el total: la figura y la tabla tienen que salir del mismo
+    conjunto de corridas o el lector encuentra dos valores para lo mismo.
+
+    La media agrupada se calcula ponderando la media de cada campaña por su
+    número de éxitos, que es sobre lo que está tomada.
+    """
+    from collections import defaultdict
+
+    campanas = ["nova-final", "e5-bloqueo", "e6-planner"]
+    if (RESULTADOS / "nova-extreme" / "summary.json").is_file():
+        campanas.append("nova-extreme")
+
+    acc: dict[str, list[float]] = defaultdict(lambda: [0.0, 0])  # suma, éxitos
+    for d in campanas:
+        cruce = _resumen(d).get("por_condicion_escenario", {})
+        for esc, v in cruce.get("baseline", {}).items():
+            if v["exitos"]:
+                acc[esc][0] += v["eficiencia_media"] * v["exitos"]
+                acc[esc][1] += v["exitos"]
+
     etq, val, txt = [], [], []
     for e in ORDEN:
-        if e not in s or not s[e]["eficiencia_media"]:
+        if e not in acc or not acc[e][1]:
             continue
+        media = acc[e][0] / acc[e][1]
         etq.append(e)
-        val.append(s[e]["eficiencia_media"])
-        txt.append(f'{s[e]["eficiencia_media"]:.2f}')
+        val.append(round(media, 2))
+        txt.append(f"{media:.2f}".replace(".", ","))
     barras_horizontales(
         DESTINO / "eficiencia-por-escenario.svg",
         "Eficiencia sobre corridas exitosas",
