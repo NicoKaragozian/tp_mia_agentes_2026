@@ -10,10 +10,10 @@
     "pasos_medios": 8.0,
     "repeticion_media": 0.0,
     "llamadas_llm_medias": 9.0,
-    "tokens_entrada_medios": 8965,
-    "tokens_salida_medios": 169,
-    "latencia_media_s": 7.0,
-    "latencia_mediana_s": 7.0
+    "tokens_entrada_medios": 9418,
+    "tokens_salida_medios": 168,
+    "latencia_media_s": 9.7,
+    "latencia_mediana_s": 9.7
   },
   "por_condicion": {
     "baseline": {
@@ -25,10 +25,10 @@
       "pasos_medios": 8.0,
       "repeticion_media": 0.0,
       "llamadas_llm_medias": 9.0,
-      "tokens_entrada_medios": 8965,
-      "tokens_salida_medios": 169,
-      "latencia_media_s": 7.0,
-      "latencia_mediana_s": 7.0
+      "tokens_entrada_medios": 9418,
+      "tokens_salida_medios": 168,
+      "latencia_media_s": 9.7,
+      "latencia_mediana_s": 9.7
     }
   },
   "por_dificultad": {
@@ -41,10 +41,10 @@
       "pasos_medios": 8.0,
       "repeticion_media": 0.0,
       "llamadas_llm_medias": 9.0,
-      "tokens_entrada_medios": 8965,
-      "tokens_salida_medios": 169,
-      "latencia_media_s": 7.0,
-      "latencia_mediana_s": 7.0
+      "tokens_entrada_medios": 9418,
+      "tokens_salida_medios": 168,
+      "latencia_media_s": 9.7,
+      "latencia_mediana_s": 9.7
     }
   },
   "por_escenario": {
@@ -57,10 +57,10 @@
       "pasos_medios": 8.0,
       "repeticion_media": 0.0,
       "llamadas_llm_medias": 9.0,
-      "tokens_entrada_medios": 8965,
-      "tokens_salida_medios": 169,
-      "latencia_media_s": 7.0,
-      "latencia_mediana_s": 7.0
+      "tokens_entrada_medios": 9418,
+      "tokens_salida_medios": 168,
+      "latencia_media_s": 9.7,
+      "latencia_mediana_s": 9.7
     }
   },
   "por_condicion_escenario": {
@@ -74,24 +74,14 @@
         "pasos_medios": 8.0,
         "repeticion_media": 0.0,
         "llamadas_llm_medias": 9.0,
-        "tokens_entrada_medios": 8965,
-        "tokens_salida_medios": 169,
-        "latencia_media_s": 7.0,
-        "latencia_mediana_s": 7.0
+        "tokens_entrada_medios": 9418,
+        "tokens_salida_medios": 168,
+        "latencia_media_s": 9.7,
+        "latencia_mediana_s": 9.7
       }
     }
   },
   "modos_de_fallo": {},
-  "rubrica_media": {
-    "coherencia_plan": 5.0,
-    "recuperacion_errores": 3.0,
-    "exploracion_eficiente": 4.0
-  },
-  "rubrica_por_condicion": {
-    "baseline": {
-      "coherencia_plan": 5.0,
-      "recuperacion_errores": 3.0,
-      "exploracion_eficiente": 4.0
-    }
-  }
+  "rubrica_media": {},
+  "rubrica_por_condicion": {}
 }

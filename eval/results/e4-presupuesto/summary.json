@@ -119,9 +119,102 @@
       "latencia_mediana_s": 23.6
     }
   },
+  "por_condicion_escenario": {
+    "baseline": {
+      "color-locks": {
+        "n": 8,
+        "descartadas": 0,
+        "exitos": 2,
+        "tasa_exito": 0.25,
+        "eficiencia_media": 0.688,
+        "pasos_medios": 41.5,
+        "repeticion_media": 0.639,
+        "llamadas_llm_medias": 41.8,
+        "tokens_entrada_medios": 173352,
+        "tokens_salida_medios": 2672,
+        "latencia_media_s": 41.4,
+        "latencia_mediana_s": 49.4
+      },
+      "office-sequence": {
+        "n": 8,
+        "descartadas": 0,
+        "exitos": 7,
+        "tasa_exito": 0.875,
+        "eficiencia_media": 0.386,
+        "pasos_medios": 40.4,
+        "repeticion_media": 0.641,
+        "llamadas_llm_medias": 40.4,
+        "tokens_entrada_medios": 135594,
+        "tokens_salida_medios": 1922,
+        "latencia_media_s": 34.7,
+        "latencia_mediana_s": 42.6
+      }
+    },
+    "presupuesto_100": {
+      "color-locks": {
+        "n": 8,
+        "descartadas": 0,
+        "exitos": 6,
+        "tasa_exito": 0.75,
+        "eficiencia_media": 0.531,
+        "pasos_medios": 41.0,
+        "repeticion_media": 0.463,
+        "llamadas_llm_medias": 41.2,
+        "tokens_entrada_medios": 158376,
+        "tokens_salida_medios": 2661,
+        "latencia_media_s": 40.4,
+        "latencia_mediana_s": 23.1
+      },
+      "office-sequence": {
+        "n": 8,
+        "descartadas": 0,
+        "exitos": 7,
+        "tasa_exito": 0.875,
+        "eficiencia_media": 0.247,
+        "pasos_medios": 81.2,
+        "repeticion_media": 0.767,
+        "llamadas_llm_medias": 81.1,
+        "tokens_entrada_medios": 292814,
+        "tokens_salida_medios": 3805,
+        "latencia_media_s": 72.0,
+        "latencia_mediana_s": 88.1
+      }
+    },
+    "presupuesto_25": {
+      "color-locks": {
+        "n": 8,
+        "descartadas": 0,
+        "exitos": 3,
+        "tasa_exito": 0.375,
+        "eficiencia_media": 0.575,
+        "pasos_medios": 22.9,
+        "repeticion_media": 0.394,
+        "llamadas_llm_medias": 23.2,
+        "tokens_entrada_medios": 70830,
+        "tokens_salida_medios": 1363,
+        "latencia_media_s": 20.7,
+        "latencia_mediana_s": 21.8
+      },
+      "office-sequence": {
+        "n": 8,
+        "descartadas": 0,
+        "exitos": 3,
+        "tasa_exito": 0.375,
+        "eficiencia_media": 0.507,
+        "pasos_medios": 25.4,
+        "repeticion_media": 0.568,
+        "llamadas_llm_medias": 25.0,
+        "tokens_entrada_medios": 73075,
+        "tokens_salida_medios": 1214,
+        "latencia_media_s": 20.6,
+        "latencia_mediana_s": 20.3
+      }
+    }
+  },
   "modos_de_fallo": {
     "bucle": 18,
     "accion_invalida": 2
   },
-  "rubrica_media": {}
+  "rubrica_media": {},
+  "rubrica_por_condicion": {}
 }

@@ -10,7 +10,13 @@ from __future__ import annotations
 
 import pytest
 
-from eval.analysis import clasificar, fraccion_repetidas, modo_principal, resumen_modos
+from eval.analysis import (
+    clasificar,
+    fraccion_repetidas,
+    modo_principal,
+    resumen_modos,
+    techo_contexto,
+)
 from eval.config import OPTIMOS, presupuesto_iteraciones
 from eval.metrics import eficiencia, resumir
 
@@ -236,3 +242,129 @@ def test_resumir_excluye_las_corridas_contaminadas():
     assert r.descartadas == 1
     assert r.exitos == 1 and r.tasa_exito == 0.5
     assert r.pasos_medios == 0.5, "los 99 pasos truncados no deben promediarse"
+
+
+# ---------------------------------------------------------------------------
+# Generación de figuras (M3)
+# ---------------------------------------------------------------------------
+
+
+def test_resumen_incluye_el_cruce_condicion_escenario():
+    """Sin el cruce, una figura que grafique el baseline de un experimento
+    mezclaría su rama experimental: `por_escenario` agrega ambas."""
+    from eval.report import construir_resumen
+
+    trazas = [
+        _traza(condicion="baseline", escenario="a", meta_lograda=True),
+        _traza(condicion="baseline", escenario="a", meta_lograda=False),
+        _traza(condicion="con_bloqueo", escenario="a", meta_lograda=False),
+    ]
+    r = construir_resumen(trazas)
+
+    assert r["por_escenario"]["a"]["n"] == 3, "el agregado suma todo"
+    cruce = r["por_condicion_escenario"]
+    assert cruce["baseline"]["a"]["n"] == 2
+    assert cruce["baseline"]["a"]["exitos"] == 1
+    assert cruce["con_bloqueo"]["a"]["n"] == 1
+
+
+def test_pooled_por_escenario_filtra_por_condicion(tmp_path, monkeypatch):
+    """El bug que motivó el cruce: sumar `por_escenario` inflaría el
+    denominador con las corridas de la rama experimental."""
+    import json
+
+    from eval import figuras
+
+    campana = tmp_path / "camp"
+    campana.mkdir()
+    (campana / "summary.json").write_text(
+        json.dumps(
+            {
+                "por_escenario": {"a": {"exitos": 5, "n": 20}},
+                "por_condicion_escenario": {
+                    "baseline": {"a": {"exitos": 4, "n": 10}},
+                    "con_bloqueo": {"a": {"exitos": 1, "n": 10}},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(figuras, "RESULTADOS", tmp_path)
+
+    assert figuras._pooled_por_escenario(["camp"]) == {"a": [4, 10]}
+    assert figuras._pooled_por_escenario(["camp"], "con_bloqueo") == {"a": [1, 10]}
+
+
+def test_pooled_falla_claro_si_la_condicion_no_existe(tmp_path, monkeypatch):
+    import json
+
+    from eval import figuras
+
+    campana = tmp_path / "camp"
+    campana.mkdir()
+    (campana / "summary.json").write_text(
+        json.dumps({"por_condicion_escenario": {"baseline": {"a": {"exitos": 1, "n": 2}}}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(figuras, "RESULTADOS", tmp_path)
+
+    with pytest.raises(KeyError, match="con_planner"):
+        figuras._pooled_por_escenario(["camp"], "con_planner")
+
+
+def test_barra_de_valor_cero_no_dibuja_barra(tmp_path):
+    """Un ancho mínimo de un pixel haría ver un 0 % como si fuera positivo."""
+    from eval.figuras import barras_horizontales
+
+    destino = tmp_path / "f.svg"
+    barras_horizontales(
+        destino, "t", "s", ["nada", "todo"], [0.0, 100.0], ["0/10", "10/10"]
+    )
+    svg = destino.read_text(encoding="utf-8")
+
+    assert 'width="0.0"' in svg, "el 0 debe dibujarse con ancho 0"
+    assert "0/10" in svg and "10/10" in svg, "las anotaciones se muestran igual"
+
+
+def test_las_figuras_no_leen_trazas_crudas():
+    """La reproducibilidad prometida en el informe depende de esto: las
+    trazas pesan 93 MB y no se versionan, así que un clon limpio no las
+    tiene."""
+    from pathlib import Path
+
+    codigo = Path("eval/figuras.py").read_text(encoding="utf-8")
+    assert "trazas.json" not in codigo, (
+        "figuras.py debe construirse solo desde los resúmenes versionados"
+    )
+
+
+# --- techo de contexto por proveedor ----------------------------------------
+
+
+def test_techo_contexto_distingue_proveedores():
+    """El techo depende del modelo, no es una constante del problema."""
+    assert techo_contexto("ollama:llama3.1:8b") == 16_384
+    assert techo_contexto("bedrock:amazon.nova-lite-v1:0") == 300_000
+
+
+def test_techo_contexto_cae_al_mas_chico_si_no_reconoce():
+    """Ante un modelo desconocido conviene marcar de más que de menos."""
+    assert techo_contexto("proveedor:modelo-inventado") == 16_384
+    assert techo_contexto("") == 16_384
+
+
+def test_desborde_no_se_marca_con_el_techo_de_otro_proveedor():
+    """Un prompt de 16k desborda a Ollama pero no a Nova Lite.
+
+    Es el error que este cambio corrige: medir las corridas de Bedrock contra
+    el `num_ctx` que el framework le pasa a Ollama marcaba desbordes que no
+    existían.
+    """
+    llamadas = [{"input_tokens": 16_000, "output_tokens": 10}]
+    base = {"meta_lograda": False, "pasos": [], "llamadas_llm": llamadas,
+            "corte": "limite_iteraciones", "fallo_infra": False}
+
+    assert "desborde_contexto" in clasificar({**base, "modelo": "ollama:llama3.1:8b"})
+    assert "desborde_contexto" not in clasificar(
+        {**base, "modelo": "bedrock:amazon.nova-lite-v1:0"}
+    )

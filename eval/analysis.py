@@ -23,10 +23,39 @@ from typing import Any
 #: Contamos una llamada como repetida si (herramienta, argumentos) ya salió.
 UMBRAL_BUCLE = 0.30  # fracción de llamadas repetidas para hablar de bucle
 
-#: `OllamaProvider` fija num_ctx=16384. Si el prompt se acerca a ese techo,
-#: el contexto está desbordando y el modelo empieza a perder disciplina.
-TECHO_CONTEXTO = 16384
+#: Ventana de contexto de cada proveedor, en tokens. El techo NO es una
+#: propiedad de la tarea sino del modelo con el que se la corre, así que
+#: clasificar "desborde de contexto" contra un único número fijo mide mal en
+#: cuanto se compara más de un proveedor: 16.384 es el `num_ctx` que
+#: `LLMClient` le pasa a Ollama, pero Nova Lite admite 300.000 y un prompt de
+#: 16.000 tokens no lo acerca ni remotamente a su límite.
+TECHOS_CONTEXTO: dict[str, int] = {
+    "ollama": 16_384,          # mia_agents/llm_client.py: num_ctx por defecto
+    "amazon.nova-lite": 300_000,
+    "amazon.nova-micro": 128_000,
+    "amazon.nova-pro": 300_000,
+}
+
+#: Si no reconocemos el modelo, asumimos el techo más chico. Prefiere marcar
+#: de más antes que dejar pasar un desborde real sin diagnosticar.
+TECHO_POR_DEFECTO = 16_384
+
 UMBRAL_CONTEXTO = 0.85
+
+
+def techo_contexto(modelo: str) -> int:
+    """Ventana de contexto del modelo que produjo una traza.
+
+    `modelo` viene de la traza con la forma `proveedor:id`, por ejemplo
+    `ollama:llama3.1:8b` o `bedrock:amazon.nova-lite-v1:0`. Se busca por
+    subcadena para no depender de la versión exacta del identificador.
+    """
+    m = (modelo or "").lower()
+    for clave, techo in TECHOS_CONTEXTO.items():
+        if clave in m:
+            return techo
+    return TECHO_POR_DEFECTO
+
 
 #: Orden de prioridad: el primero que aplique es el modo principal.
 _PRIORIDAD = [
@@ -87,7 +116,8 @@ def clasificar(traza: dict[str, Any]) -> list[str]:
     picos = [
         ll.get("input_tokens") or 0 for ll in (traza.get("llamadas_llm") or [])
     ]
-    if picos and max(picos) >= TECHO_CONTEXTO * UMBRAL_CONTEXTO:
+    techo = techo_contexto(traza.get("modelo", ""))
+    if picos and max(picos) >= techo * UMBRAL_CONTEXTO:
         modos.append("desborde_contexto")
 
     if fraccion_repetidas(pasos) >= UMBRAL_BUCLE:

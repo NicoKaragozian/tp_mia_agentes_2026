@@ -26,15 +26,45 @@ def _orden_escenario(nombre: str) -> int:
         return len(ORDEN_ESCENARIOS)
 
 
+def _rubrica(trazas: list[dict[str, Any]]) -> dict[str, float]:
+    """Media por dimensión de los veredictos válidos del juez."""
+    notas = [
+        t["juez"]
+        for t in trazas
+        if isinstance(t.get("juez"), dict) and "error_juez" not in t["juez"]
+    ]
+    salida: dict[str, float] = {}
+    for dim in ("coherencia_plan", "recuperacion_errores", "exploracion_eficiente"):
+        valores = [n[dim] for n in notas if isinstance(n.get(dim), int)]
+        if valores:
+            salida[dim] = round(statistics.fmean(valores), 2)
+    return salida
+
+
 def construir_resumen(trazas: list[dict[str, Any]]) -> dict[str, Any]:
-    """Estructura agregada de la corrida, lista para serializar."""
-    notas = [t["juez"] for t in trazas if isinstance(t.get("juez"), dict) and "error_juez" not in t["juez"]]
-    rubrica: dict[str, float] = {}
-    if notas:
-        for dim in ("coherencia_plan", "recuperacion_errores", "exploracion_eficiente"):
-            valores = [n[dim] for n in notas if isinstance(n.get(dim), int)]
-            if valores:
-                rubrica[dim] = round(statistics.fmean(valores), 2)
+    """Estructura agregada de la corrida, lista para serializar.
+
+    El resumen incluye el cruce condición × escenario y la rúbrica del juez
+    por condición, no solo los agregados por eje. Los agregados sueltos no
+    alcanzan para reconstruir nada: al graficar la tasa de éxito del baseline
+    de un experimento hay que poder separarlo de su rama experimental, y
+    `por_escenario` mezcla ambas. Como las trazas crudas no se versionan (93
+    MB) y los resúmenes sí (4 KB), todo lo que las figuras del informe
+    necesiten tiene que estar acá.
+    """
+    # Cruce condición x escenario: lo que hace falta para graficar una
+    # condición concreta sin mezclarla con las demás del mismo experimento.
+    cruce: dict[str, dict[str, Any]] = {}
+    rubrica_cond: dict[str, dict[str, float]] = {}
+    for condicion in sorted({str(t.get("condicion")) for t in trazas}):
+        de_cond = [t for t in trazas if str(t.get("condicion")) == condicion]
+        cruce[condicion] = {
+            k: v.como_dict() for k, v in agrupar_por(de_cond, "escenario").items()
+        }
+        notas_cond = _rubrica(de_cond)
+        if notas_cond:
+            rubrica_cond[condicion] = notas_cond
+
     return {
         "n_corridas": len(trazas),
         "modelo": trazas[0]["modelo"] if trazas else "",
@@ -42,8 +72,10 @@ def construir_resumen(trazas: list[dict[str, Any]]) -> dict[str, Any]:
         "por_condicion": {k: v.como_dict() for k, v in agrupar_por(trazas, "condicion").items()},
         "por_dificultad": {k: v.como_dict() for k, v in agrupar_por(trazas, "dificultad").items()},
         "por_escenario": {k: v.como_dict() for k, v in agrupar_por(trazas, "escenario").items()},
+        "por_condicion_escenario": cruce,
         "modos_de_fallo": resumen_modos(trazas),
-        "rubrica_media": rubrica,
+        "rubrica_media": _rubrica(trazas),
+        "rubrica_por_condicion": rubrica_cond,
     }
 
 

@@ -175,6 +175,224 @@
       "latencia_mediana_s": 5.7
     }
   },
+  "por_condicion_escenario": {
+    "baseline": {
+      "apartment-keys": {
+        "n": 10,
+        "descartadas": 0,
+        "exitos": 8,
+        "tasa_exito": 0.8,
+        "eficiencia_media": 0.442,
+        "pasos_medios": 33.5,
+        "repeticion_media": 0.513,
+        "llamadas_llm_medias": 34.3,
+        "tokens_entrada_medios": 137763,
+        "tokens_salida_medios": 2083,
+        "latencia_media_s": 32.2,
+        "latencia_mediana_s": 15.4
+      },
+      "color-locks": {
+        "n": 10,
+        "descartadas": 0,
+        "exitos": 6,
+        "tasa_exito": 0.6,
+        "eficiencia_media": 0.589,
+        "pasos_medios": 51.6,
+        "repeticion_media": 0.519,
+        "llamadas_llm_medias": 51.7,
+        "tokens_entrada_medios": 206482,
+        "tokens_salida_medios": 3575,
+        "latencia_media_s": 53.2,
+        "latencia_mediana_s": 20.6
+      },
+      "library-search": {
+        "n": 10,
+        "descartadas": 0,
+        "exitos": 7,
+        "tasa_exito": 0.7,
+        "eficiencia_media": 0.408,
+        "pasos_medios": 43.6,
+        "repeticion_media": 0.32,
+        "llamadas_llm_medias": 42.2,
+        "tokens_entrada_medios": 302660,
+        "tokens_salida_medios": 2546,
+        "latencia_media_s": 44.9,
+        "latencia_mediana_s": 15.7
+      },
+      "office-sequence": {
+        "n": 10,
+        "descartadas": 0,
+        "exitos": 6,
+        "tasa_exito": 0.6,
+        "eficiencia_media": 0.13,
+        "pasos_medios": 100.1,
+        "repeticion_media": 0.874,
+        "llamadas_llm_medias": 100.0,
+        "tokens_entrada_medios": 366046,
+        "tokens_salida_medios": 4541,
+        "latencia_media_s": 90.3,
+        "latencia_mediana_s": 90.9
+      },
+      "study-with-key": {
+        "n": 10,
+        "descartadas": 0,
+        "exitos": 8,
+        "tasa_exito": 0.8,
+        "eficiencia_media": 0.656,
+        "pasos_medios": 23.7,
+        "repeticion_media": 0.19,
+        "llamadas_llm_medias": 24.5,
+        "tokens_entrada_medios": 80768,
+        "tokens_salida_medios": 1393,
+        "latencia_media_s": 22.6,
+        "latencia_mediana_s": 4.9
+      }
+    },
+    "memoria_ajustada": {
+      "apartment-keys": {
+        "n": 10,
+        "descartadas": 0,
+        "exitos": 8,
+        "tasa_exito": 0.8,
+        "eficiencia_media": 0.292,
+        "pasos_medios": 48.6,
+        "repeticion_media": 0.603,
+        "llamadas_llm_medias": 49.1,
+        "tokens_entrada_medios": 98426,
+        "tokens_salida_medios": 2357,
+        "latencia_media_s": 35.1,
+        "latencia_mediana_s": 26.4
+      },
+      "color-locks": {
+        "n": 10,
+        "descartadas": 0,
+        "exitos": 10,
+        "tasa_exito": 1.0,
+        "eficiencia_media": 0.507,
+        "pasos_medios": 24.7,
+        "repeticion_media": 0.332,
+        "llamadas_llm_medias": 23.8,
+        "tokens_entrada_medios": 46152,
+        "tokens_salida_medios": 1240,
+        "latencia_media_s": 18.0,
+        "latencia_mediana_s": 15.8
+      },
+      "library-search": {
+        "n": 10,
+        "descartadas": 0,
+        "exitos": 0,
+        "tasa_exito": 0.0,
+        "eficiencia_media": 0.0,
+        "pasos_medios": 102.7,
+        "repeticion_media": 0.83,
+        "llamadas_llm_medias": 100.0,
+        "tokens_entrada_medios": 205543,
+        "tokens_salida_medios": 7580,
+        "latencia_media_s": 89.4,
+        "latencia_mediana_s": 86.1
+      },
+      "office-sequence": {
+        "n": 10,
+        "descartadas": 0,
+        "exitos": 3,
+        "tasa_exito": 0.3,
+        "eficiencia_media": 0.127,
+        "pasos_medios": 101.8,
+        "repeticion_media": 0.869,
+        "llamadas_llm_medias": 100.0,
+        "tokens_entrada_medios": 204927,
+        "tokens_salida_medios": 4321,
+        "latencia_media_s": 71.4,
+        "latencia_mediana_s": 70.2
+      },
+      "study-with-key": {
+        "n": 10,
+        "descartadas": 0,
+        "exitos": 8,
+        "tasa_exito": 0.8,
+        "eficiencia_media": 0.641,
+        "pasos_medios": 24.7,
+        "repeticion_media": 0.246,
+        "llamadas_llm_medias": 25.5,
+        "tokens_entrada_medios": 46834,
+        "tokens_salida_medios": 1066,
+        "latencia_media_s": 17.3,
+        "latencia_mediana_s": 4.6
+      }
+    },
+    "memoria_minima": {
+      "apartment-keys": {
+        "n": 10,
+        "descartadas": 0,
+        "exitos": 7,
+        "tasa_exito": 0.7,
+        "eficiencia_media": 0.223,
+        "pasos_medios": 61.2,
+        "repeticion_media": 0.722,
+        "llamadas_llm_medias": 61.7,
+        "tokens_entrada_medios": 109735,
+        "tokens_salida_medios": 3421,
+        "latencia_media_s": 45.7,
+        "latencia_mediana_s": 48.7
+      },
+      "color-locks": {
+        "n": 10,
+        "descartadas": 0,
+        "exitos": 2,
+        "tasa_exito": 0.2,
+        "eficiencia_media": 0.424,
+        "pasos_medios": 85.8,
+        "repeticion_media": 0.817,
+        "llamadas_llm_medias": 84.9,
+        "tokens_entrada_medios": 146591,
+        "tokens_salida_medios": 4343,
+        "latencia_media_s": 61.9,
+        "latencia_mediana_s": 71.6
+      },
+      "library-search": {
+        "n": 10,
+        "descartadas": 0,
+        "exitos": 0,
+        "tasa_exito": 0.0,
+        "eficiencia_media": 0.0,
+        "pasos_medios": 100.8,
+        "repeticion_media": 0.826,
+        "llamadas_llm_medias": 100.0,
+        "tokens_entrada_medios": 183497,
+        "tokens_salida_medios": 5990,
+        "latencia_media_s": 75.6,
+        "latencia_mediana_s": 75.4
+      },
+      "office-sequence": {
+        "n": 10,
+        "descartadas": 0,
+        "exitos": 1,
+        "tasa_exito": 0.1,
+        "eficiencia_media": 0.13,
+        "pasos_medios": 101.2,
+        "repeticion_media": 0.882,
+        "llamadas_llm_medias": 100.0,
+        "tokens_entrada_medios": 182528,
+        "tokens_salida_medios": 4549,
+        "latencia_media_s": 65.5,
+        "latencia_mediana_s": 65.7
+      },
+      "study-with-key": {
+        "n": 10,
+        "descartadas": 0,
+        "exitos": 7,
+        "tasa_exito": 0.7,
+        "eficiencia_media": 0.245,
+        "pasos_medios": 43.0,
+        "repeticion_media": 0.591,
+        "llamadas_llm_medias": 43.5,
+        "tokens_entrada_medios": 71636,
+        "tokens_salida_medios": 2132,
+        "latencia_media_s": 31.6,
+        "latencia_mediana_s": 18.0
+      }
+    }
+  },
   "modos_de_fallo": {
     "bucle": 68,
     "accion_invalida": 1
@@ -183,5 +401,22 @@
     "coherencia_plan": 2.67,
     "recuperacion_errores": 2.58,
     "exploracion_eficiente": 2.62
+  },
+  "rubrica_por_condicion": {
+    "baseline": {
+      "coherencia_plan": 3.16,
+      "recuperacion_errores": 3.2,
+      "exploracion_eficiente": 3.12
+    },
+    "memoria_ajustada": {
+      "coherencia_plan": 2.88,
+      "recuperacion_errores": 2.78,
+      "exploracion_eficiente": 2.88
+    },
+    "memoria_minima": {
+      "coherencia_plan": 1.96,
+      "recuperacion_errores": 1.76,
+      "exploracion_eficiente": 1.86
+    }
   }
 }

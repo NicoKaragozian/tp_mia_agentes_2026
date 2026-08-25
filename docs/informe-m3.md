@@ -10,6 +10,78 @@ Buenos Aires, Agosto de 2026
 
 ---
 
+## Resumen ejecutivo
+
+Este trabajo evalúa un agente ReAct construido desde cero a lo largo de tres
+milestones, resolviendo ocho escenarios de escape room mediante herramientas de
+mundo. La medición central son **180 corridas** con `amazon.nova-lite-v1:0`
+sobre Amazon Bedrock, más seis experimentos de ablación sobre el framework.
+
+**Resultado.** El agente resuelve **130 de 180 escenarios (72 %, intervalo de
+confianza al 95 % de 65 a 78)**. Sobre los cinco escenarios obligatorios hasta
+dificultad hard, **118 de 150 (78,7 %, de 71 a 84)**. Ningún escenario alcanza
+el 100 %: medido como pass^k, ninguno es perfectamente confiable.
+
+**Hallazgo principal.** La elección del modelo domina sobre toda decisión de
+diseño del framework. Cambiar de llama3.1 8B a Nova Lite, **sin tocar una sola
+línea de código**, movió la tasa de éxito de 25 % a 70 % sobre las condiciones
+comparables. Los seis experimentos de ablación —presupuesto de memoria, prompt
+especializado, memoria episódica, presupuesto de iteraciones, bloqueo de
+repeticiones y planificador explícito— no produjeron **ninguna** mejora
+medible sobre el baseline, ni sumados. El techo que estábamos midiendo no era
+el del framework.
+
+**Corolario metodológico.** Las conclusiones de un experimento de ablación no
+transfieren entre modelos. E1 y E2 se corrieron completos sobre las dos
+campañas y dieron resultados distintos, en un caso directamente opuestos: la
+intervención que ayudaba a llama3.1 es la que perjudica a Nova Lite.
+
+**Modo de fallo.** Con Nova Lite desaparecen por completo los fallos de
+disciplina de tool calling que dominaban con el modelo chico. Los cincuenta
+fracasos restantes son, sin excepción, **bucle**: el agente repite acciones ya
+ejecutadas hasta agotar el presupuesto de iteraciones. Es la ausencia de una
+condición de parada por deadlock, y es el único frente donde queda trabajo
+claro por hacer.
+
+**Qué no se puede afirmar.** El juez LLM no está calibrado contra anotación
+humana, así que sus tres dimensiones de conducta valen como señal comparativa
+entre condiciones y no como medición absoluta. Los tres escenarios extreme
+tienen 10 corridas cada uno, muy pocas para sostener comparaciones finas entre
+ellos.
+
+## Índice
+
+- [0. Marco teórico — Arquitectura del agente](#0-marco-teórico--arquitectura-del-agente)
+  - [El tool use como protocolo](#el-tool-use-como-protocolo)
+  - [Gestión de contexto](#gestión-de-contexto)
+  - [Condiciones de parada y errores como observaciones](#condiciones-de-parada-y-errores-como-observaciones)
+- [1. Aproximación](#1-aproximación)
+- [2. Evals](#2-evals)
+  - [2.1. Dimensiones de calidad](#21-dimensiones-de-calidad)
+  - [2.2. Dónde se observa cada dimensión](#22-dónde-se-observa-cada-dimensión)
+  - [2.3. Quién juzga cada dimensión](#23-quién-juzga-cada-dimensión)
+  - [2.4. Modos de fallo](#24-modos-de-fallo)
+  - [2.5. Meta evaluación del juez (faltante)](#25-meta-evaluación-del-juez-faltante)
+- [3. Resultados](#3-resultados)
+  - [3.1. Por qué se mide con repeticiones y no con una corrida](#31-por-qué-se-mide-con-repeticiones-y-no-con-una-corrida)
+  - [3.2. Metodología de medición](#32-metodología-de-medición)
+  - [3.3. Tasa de éxito por escenario](#33-tasa-de-éxito-por-escenario)
+  - [3.4. El modelo domina sobre las decisiones de framework](#34-el-modelo-domina-sobre-las-decisiones-de-framework)
+  - [3.5. Eficiencia](#35-eficiencia)
+  - [3.6. Dimensiones de conducta según el juez](#36-dimensiones-de-conducta-según-el-juez)
+- [4. Experimentos](#4-experimentos)
+  - [E1. Presupuesto de memoria conversacional](#e1-presupuesto-de-memoria-conversacional)
+  - [E2. Prompt genérico contra prompt especializado](#e2-prompt-genérico-contra-prompt-especializado)
+  - [E3. Memoria episódica de acciones ejecutadas](#e3-memoria-episódica-de-acciones-ejecutadas)
+  - [E4. Presupuesto de iteraciones](#e4-presupuesto-de-iteraciones)
+  - [E5. Bloqueo de repeticiones estériles](#e5-bloqueo-de-repeticiones-estériles)
+  - [E6. Planificador explícito de sub-objetivos](#e6-planificador-explícito-de-sub-objetivos)
+  - [Lectura conjunta de los seis experimentos](#lectura-conjunta-de-los-seis-experimentos)
+- [5. Limitaciones y próximos pasos](#5-limitaciones-y-próximos-pasos)
+- [Reproducibilidad](#reproducibilidad)
+
+---
+
 ## 0. Marco teórico — Arquitectura del agente
 
 El framework construido a lo largo de M1 y M2 sigue el paradigma ReAct que
@@ -183,8 +255,9 @@ nombre y se corrigió las dos, resolviendo el escenario en ocho pasos donde ante
 fallaba después de catorce.
 
 El punto que vale la pena subrayar no es la corrección en sí, sino que
-doscientos diez tests con el cliente simulado habían pasado, antes y después, sin
-detectar el problema, porque ese cliente nunca se equivoca de nombre de
+la suite entera con el cliente simulado había pasado, antes y después, sin
+detectar el problema (doscientos diez tests en ese momento, doscientos sesenta
+y uno en la entrega final), porque ese cliente nunca se equivoca de nombre de
 argumento. Solo un modelo real produce ese tipo de error, y por eso una
 evaluación de agentes que se apoya únicamente en mocks tiene un punto ciego
 estructural.
@@ -361,8 +434,8 @@ repeticiones independientes.
 | :---- | :---- |
 | **Modelo evaluado** | `amazon.nova-lite-v1:0` sobre Amazon Bedrock |
 | **Configuración** | Idéntica para los ocho escenarios, mismo prompt de dominio, misma ventana de historial, mismo presupuesto de iteraciones |
-| **Repeticiones por escenario** | 30 corridas independientes, en tres tandas de 10 |
-| **Corridas totales de la campaña** | 150 (cinco escenarios obligatorios por 30) |
+| **Repeticiones por escenario** | 30 corridas en los cinco escenarios hasta hard, 10 en los tres extreme |
+| **Corridas totales de la campaña** | 180 sobre los ocho escenarios del dataset |
 | **Corridas descartadas por fallo de infraestructura** | 0 |
 
 Las corridas descartadas se cuentan aparte y se excluyen de todos los agregados.
@@ -373,46 +446,107 @@ perdieron en lugar de que desaparezcan en silencio.
 
 ### 3.3. Tasa de éxito por escenario
 
-| Escenario | Dificultad | Éxito | Intervalo de confianza aproximado (%) |
+| Escenario | Dificultad | Éxito | Intervalo de confianza al 95 % (%) |
 | :---- | :---- | :---- | :---- |
-| **study with key** | easy | 29 de 30 (97 %) | 83 a 100 |
-| **color locks** | medium | 20 de 30 (67 %) | 47 a 83 |
-| **apartment keys** | medium | 24 de 30 (80 %) | 61 a 92 |
-| **library search** | hard | 21 de 30 (70 %) | 51 a 85 |
-| **office sequence** | hard | 24 de 30 (80 %) | 61 a 92 |
-| **Total, 150 corridas** | | **118 de 150 (78,7 %)** | **72 a 85** |
+| **study with key** | easy | 29 de 30 (97 %) | 83 a 99 |
+| **color locks** | medium | 20 de 30 (67 %) | 49 a 81 |
+| **apartment keys** | medium | 24 de 30 (80 %) | 63 a 90 |
+| **library search** | hard | 21 de 30 (70 %) | 52 a 83 |
+| **office sequence** | hard | 24 de 30 (80 %) | 63 a 90 |
+| **extreme archive** | extreme | 9 de 10 (90 %) | 60 a 98 |
+| **backtracking vault** | extreme | 2 de 10 (20 %) | 6 a 51 |
+| **vault combination** | extreme | 1 de 10 (10 %) | 2 a 40 |
+| **Total, 180 corridas** | | **130 de 180 (72 %)** | **65 a 78** |
 
-Las 150 corridas provienen de tres mediciones independientes de 50, realizadas en
-momentos distintos de la campaña con configuración idéntica. Sus tasas globales
-fueron 80 %, 80 % y 76 %, lo que da una idea directa de la varianza del sistema:
-la misma configuración, medida tres veces con cincuenta repeticiones cada una,
-oscila cuatro puntos.
+![Tasa de éxito por escenario](figuras/exito-por-escenario.svg)
 
-Ningún escenario alcanza el 100 % sobre treinta repeticiones, es decir, medido
-como pass^k con k igual a treinta, ningún escenario es perfectamente confiable.
-El escenario más simple es el que exhibe la tasa más alta, y los dos escenarios
-de dificultad hard muestran tasas bajas, un ordenamiento consistente con la
-dificultad declarada de cada uno.
+Agrupando por dificultad declarada: easy 97 %, medium 73 %, hard 75 %, extreme 40 %. Los cinco escenarios obligatorios hasta hard suman 118 de 150 (78,7 %, intervalo de 71 a 84); los tres extreme, que la consigna reserva para la competencia, bajan el promedio general a 72 %.
+
+Los intervalos son de Wilson, no la aproximación normal. Con celdas de diez
+corridas y proporciones cercanas a los extremos, la aproximación normal
+produce límites fuera del rango válido: para una corrida exitosa de diez
+daría un límite inferior negativo. Wilson se mantiene dentro de cero y cien
+y es el que corresponde a este tamaño de muestra.
+
+Las 150 corridas de los cinco escenarios obligatorios provienen de tres tandas
+de 50 hechas en momentos distintos: la campaña dedicada y los brazos de control
+de los experimentos E5 y E6. Que dos de las tres sean brazos de control no es un
+atajo, porque `BASELINE` es un único objeto de configuración que todos los
+experimentos comparten, así que las tres tandas corrieron literalmente el mismo
+agente. Sí implica algo que conviene tener presente al leer las dos secciones
+juntas: esta medición y los experimentos E5 y E6 **no son evidencia
+independiente**, comparten 100 de estas 150 corridas.
+
+Agrupar tandas distintas solo es lícito si son homogéneas, y lo son. Sus tasas
+fueron 80 %, 80 % y 76 %, con un estadístico chi cuadrado de homogeneidad de
+0,32 sobre dos grados de libertad, muy por debajo del valor crítico de 5,99. La
+dispersión entre tandas es la que predice el azar binomial y no una diferencia
+de condiciones, que es exactamente la condición que habilita a tratarlas como
+una sola muestra de 150. Esas mismas cifras dan además una idea directa de la
+varianza del sistema: la misma configuración, medida tres veces con cincuenta
+repeticiones cada una, oscila cuatro puntos.
+
+Ningún escenario alcanza el 100 %, es decir, medido como pass^k ningún
+escenario es perfectamente confiable. El ordenamiento general acompaña la
+dificultad declarada, con una excepción que vale la pena analizar aparte.
+
+**El caso de extreme archive.** Este escenario esconde una llave entre veinte
+expedientes con prosa burocrática y está descripto en la consigna como diseñado para no caber en la ventana de contexto de los modelos chicos. Con
+Nova Lite se resuelve el 90 % de las veces, por encima de cuatro de los cinco
+escenarios obligatorios. La instrumentación explica por qué: los picos de
+tokens de entrada de esas corridas van de 15.304 a 16.468, justo alrededor de
+los 16.384 que el proveedor local imponía como techo de ventana y que Bedrock
+no impone. La dificultad de ese escenario no era una propiedad de la tarea
+sino del modelo con el que se lo corriera, y es la confirmación más literal de
+la tesis de la sección 3.4.
+
+Los dos escenarios extreme que sí resisten son los de horizonte largo y varias
+salas, vault combination con 10 % y backtracking vault con 20 %. Ambos exigen
+combinar objetos hallados en salas distintas y volver sobre los pasos, y ambos
+fallan exclusivamente por bucle, agotando el presupuesto de cien iteraciones con 98 y 86 pasos medios respectivamente.
 
 ### 3.4. El modelo domina sobre las decisiones de framework
 
 Además de la campaña Nova Lite de la sección anterior, se corrió antes una
 campaña independiente con la misma configuración del agente sobre llama3.1 de 8B
-de parámetros ejecutado en local con Ollama. Comparando ambas campañas, el cambio
-de modelo, por sí solo, movió la tasa de éxito global de 25 % a 78,7 %, sin
-modificar una sola línea del framework. Es un efecto mayor que el de cualquiera
-de los seis experimentos de la sección siguiente, incluso sumados.
+de parámetros ejecutado en local con Ollama.
 
-| Modo de fallo | llama3.1 8B | Nova Lite |
-| :---- | :---- | :---- |
-| **Bucle, repite acciones ya ejecutadas** | 46 % de los fracasos | 100 % |
-| **Llamada escrita como texto** | 33 % | 0 % |
-| **Otros modos combinados** | 21 % | 0 % |
+Para que la comparación sea entre iguales, todo lo que sigue se calcula sobre la
+**misma población en ambas campañas**: el brazo baseline de los experimentos E1
+y E2, que es la única configuración que se corrió completa con los dos modelos.
+Son 32 corridas con llama3.1 y 100 con Nova Lite.
+
+| | llama3.1 8B | Nova Lite |
+| :---- | ----: | ----: |
+| **Tasa de éxito** | 8 de 32 (25 %) | 70 de 100 (70 %) |
+| Bucle, repite acciones ya ejecutadas | 46 % de los fracasos | 100 % |
+| Llamada escrita como texto | 33 % | 0 % |
+| Otros modos combinados | 21 % | 0 % |
+
+El cambio de modelo, por sí solo, movió la tasa de éxito de 25 % a 70 % sin
+modificar una sola línea del framework. Es un efecto mayor que el de cualquiera
+de los seis experimentos de la sección siguiente, incluso sumados. (La campaña
+completa de Nova Lite, con la configuración final y los ocho escenarios, llega
+al 72 % que reporta la sección 3.3; el 70 % de esta tabla corresponde solo a las
+condiciones que admiten comparación directa con llama3.1.)
 
 Con Nova Lite desaparecen por completo los modos de fallo asociados a una
 disciplina débil de tool calling, y el único modo que persiste es el bucle, la
 ausencia de una condición de parada por deadlock que la materia lista entre las
-cinco canónicas.
+cinco canónicas. Sobre la campaña completa de Nova Lite, que incluye los
+escenarios extreme, los cincuenta fracasos se clasifican como bucle sin una
+sola excepción.
+
+Una versión anterior de este análisis atribuía un 3 % de los fracasos a desborde
+de contexto, y vale la pena explicar por qué se corrigió. El umbral de desborde
+del clasificador estaba fijo en 16.384 tokens, que es el `num_ctx` que el
+framework le pasa a Ollama, y se aplicaba por igual a las corridas de Bedrock.
+Nova Lite admite 300.000 tokens de entrada, de modo que un prompt de dieciséis
+mil no lo acerca ni remotamente a su límite: esas corridas no desbordaban nada,
+se las estaba midiendo contra el techo de otro proveedor. El umbral ahora
+depende del modelo que produjo la traza y ninguna corrida de Nova lo alcanza. El
+error era una instancia de la tesis de esta misma sección, una propiedad del
+modelo escrita en el código como si fuera una constante del problema.
 
 El cambio de modelo no solo mueve el número agregado, cambia qué conclusiones se
 obtienen de los experimentos. Los experimentos E1 y E2 se corrieron completos
@@ -432,7 +566,12 @@ La tasa de éxito responde si el agente llega. La eficiencia responde a qué cos
 | **apartment keys** | 7 | 14,5 | 0,50 | 114.190 | 12,8 s |
 | **library search** | 7 | 17,0 | 0,42 | 276.068 | 15,4 s |
 | **office sequence** | 13 | 77,2 | **0,27** | 318.242 | 87,9 s |
-| **Global** | | | **0,48** | | |
+| **extreme archive** | 4 | 31,5 | **0,17** | — | — |
+| **backtracking vault** | 18 | 85,6 | 0,64 | — | — |
+| **vault combination** | 21 | 97,8 | 0,78 | — | — |
+| **Global, cinco obligatorios** | | | **0,48** | | |
+
+![Eficiencia por escenario](figuras/eficiencia-por-escenario.svg)
 
 La eficiencia decrece de forma monótona con la dificultad declarada del
 escenario, y el caso extremo es office sequence: figura entre los mejores por
@@ -445,6 +584,19 @@ cuantitativas en lugar de una. Medido solo por correctitud, office sequence y
 apartment keys son indistinguibles, ambos al 80 %. Medido también por eficiencia,
 uno resuelve cerca del camino ideal y el otro da vueltas hasta casi agotar el
 presupuesto.
+
+Extreme archive vuelve a ser el caso instructivo, ahora por el otro extremo:
+es el escenario con mejor tasa de éxito después del más simple, y a la vez el
+de peor eficiencia de las ocho, 0,17. Su solución óptima son cuatro llamadas y
+el agente usa treinta y uno. Resuelve examinando expedientes por fuerza bruta
+hasta dar con el correcto, no razonando sobre cuál examinar. Medido solo por
+correctitud parecería uno de los escenarios mejor resueltos del conjunto;
+medido también por eficiencia queda claro que llega sin haber entendido el
+problema.
+
+Las eficiencias altas de vault combination y backtracking vault, 0,78 y 0,64,
+se calculan sobre una y dos corridas exitosas respectivamente, así que no
+admiten lectura, se reportan por completitud.
 
 La latencia se reporta por mediana y no por media. Durante la campaña una corrida
 quedó registrada en 6.207 segundos, frente a una mediana de 12, porque la máquina
@@ -472,6 +624,8 @@ dimensiones, y la separación es más pronunciada en recuperación ante errores,
 3,80 a 1,70. Eso es coherente con el modo de fallo dominante que reporta la
 sección 3.4: una corrida que entra en bucle es, por definición, una corrida que
 no se recupera.
+
+![Rúbrica del juez por condición](figuras/juez-por-condicion.svg)
 
 Las corridas exitosas obtienen 3,52 en eficiencia de la exploración, la nota más
 baja de las tres dimensiones dentro de ese grupo. El agente llega a la meta pero
@@ -512,6 +666,8 @@ invocarla.
 | 50 mensajes | 35/50 (70 %) | 48 % | 50,5 | 218.744 |
 | 8 mensajes | 29/50 (58 %) | 58 % | 60,5 | 120.376 |
 | 4 mensajes | 17/50 (34 %) | 77 % | 78,4 | 138.797 |
+
+![E1, efecto del tamaño de la ventana](figuras/e1-memoria.svg)
 
 Acá la hipótesis original **se confirma**: recortar la ventana aumenta la
 repetición de forma monótona, de 48 % a 77 %, y el agente en lugar de colapsar
@@ -593,17 +749,38 @@ que el modelo ya tenía disponible.
 ### E4. Presupuesto de iteraciones
 
 Se comparó un presupuesto de 25, 50 y 100 iteraciones sobre los dos escenarios
-más exigentes, con 8 corridas por celda, observándose una mejora monótona a
-medida que crecía el presupuesto, de 38 % a 56 % y a 81 %. Al repetir la medición
-sobre el conjunto completo de escenarios con más repeticiones, esa mejora no se
-sostuvo: los fracasos se redistribuyeron entre escenarios sin cambiar la tasa
-global.
+más exigentes, color locks y office sequence, con 16 corridas por celda. La tasa
+de éxito creció de forma monótona: 38 %, 56 % y 81 %.
 
-Con un número tan bajo de repeticiones por celda, una tendencia que parece clara
-puede ser ruido reordenado, y este experimento sirve como advertencia
-metodológica sobre el riesgo de sacar conclusiones de pocas corridas, el mismo
-riesgo que la materia señala cuando insiste en que el intervalo de confianza tiene
-que estar por encima del ruido antes de aceptar una diferencia como real.
+Una tendencia monótona de tres puntos es tentadora, pero con estos tamaños de
+muestra hay que preguntarle a cada contraste por separado cuánto aguanta.
+
+| Contraste | Resultado | Fisher exacto |
+| :---- | :---- | :---- |
+| 25 contra 100 iteraciones | 6 de 16 contra 13 de 16 | p = 0,03 |
+| 25 contra 50 | 6 de 16 contra 9 de 16 | p = 0,48 |
+| 50 contra 100 | 9 de 16 contra 13 de 16 | p = 0,25 |
+
+Solo sobrevive el contraste entre los extremos. Los dos escalones intermedios son
+indistinguibles del ruido, de modo que el experimento no dice que más iteraciones
+sea mejor de forma continua, dice algo más acotado: un presupuesto claramente
+insuficiente arruina la medición, y una vez que alcanza para que el modelo
+despliegue su estrategia, agrandarlo deja de comprarse mejoras. Es lo que
+justifica el presupuesto uniforme de 100 adoptado en el resto del trabajo, no
+porque 100 sea óptimo sino porque está del lado seguro del único escalón real.
+
+El punto estimado del 81 % resultó además optimista. La campaña principal corrió
+después esos mismos dos escenarios con el presupuesto de 100 ya adoptado y 60
+repeticiones, y obtuvo 73 % (44 de 60). Las dos mediciones son perfectamente
+compatibles entre sí (p = 0,75), pero la de 16 corridas quedó ocho puntos por
+encima de la de 60, que es la magnitud del optimismo que hay que esperar de una
+celda chica elegida por su resultado.
+
+La moraleja metodológica es la que la materia señala al insistir en que el
+intervalo de confianza esté por encima del ruido antes de aceptar una diferencia
+como real. Este experimento es el que más cerca estuvo de hacernos concluir de
+más, y la corrección vino de repetir con más corridas, no de mirar mejor las
+mismas.
 
 ### E5. Bloqueo de repeticiones estériles
 
@@ -752,6 +929,13 @@ export BEDROCK_MODEL_ID="amazon.nova-lite-v1:0" AWS_REGION="us-east-2"
 python eval/run.py --juez                       # baseline sobre los escenarios
 python eval/run.py --experimento e1-memoria     # y análogo para e2 … e6
 ```
+
+Las figuras de este informe se regeneran con `python eval/figuras.py`, que las
+construye en SVG desde los resúmenes versionados sin ninguna dependencia de
+graficación y sin llamar al modelo: reproducirlas no requiere credenciales ni
+proveedor. El script no lee las trazas crudas en ningún camino, cosa que un test
+verifica explícitamente, porque de lo contrario la promesa de reproducibilidad
+solo se cumpliría en la máquina donde se corrió la evaluación original.
 
 Las trazas crudas de cada corrida quedan en `eval/results/`, y los resúmenes
 agregados de cada campaña están versionados en el repositorio

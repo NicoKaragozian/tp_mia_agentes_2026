@@ -11,10 +11,10 @@ Modelo: `ollama:llama3.1:8b` · corridas: 1
 | fracción de llamadas repetidas | 0% |
 | pasos medios | 8.0 |
 | llamadas al LLM medias | 9.0 |
-| tokens entrada / salida | 8965 / 169 |
+| tokens entrada / salida | 9418 / 168 |
 | corridas descartadas (fallo de infraestructura) | 0 |
-| latencia mediana | 7.0 s |
-| latencia media | 7.0 s |
+| latencia mediana | 9.7 s |
+| latencia media | 9.7 s |
 
 ## Por dificultad
 
@@ -33,11 +33,3 @@ Modelo: `ollama:llama3.1:8b` · corridas: 1
 | modo | corridas |
 |---|---|
 | — | 0 |
-
-## Rúbrica cualitativa (LLM-as-judge, 1–5)
-
-| dimensión | media |
-|---|---|
-| coherencia_plan | 5.00 |
-| recuperacion_errores | 3.00 |
-| exploracion_eficiente | 4.00 |

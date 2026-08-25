@@ -12,6 +12,8 @@ Modelo: `ollama:llama3.1:8b` · corridas: 8
 | pasos medios | 25.4 |
 | llamadas al LLM medias | 23.6 |
 | tokens entrada / salida | 41924 / 478 |
+| corridas descartadas (fallo de infraestructura) | 0 |
+| latencia mediana | 18.3 s |
 | latencia media | 35.8 s |
 
 ## Por dificultad
