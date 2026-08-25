@@ -1,0 +1,154 @@
+{
+  "n_corridas": 25,
+  "modelo": "bedrock:amazon.nova-lite-v1:0",
+  "global": {
+    "n": 25,
+    "descartadas": 0,
+    "exitos": 19,
+    "tasa_exito": 0.76,
+    "eficiencia_media": 0.533,
+    "pasos_medios": 26.9,
+    "repeticion_media": 0.363,
+    "llamadas_llm_medias": 27.5,
+    "tokens_entrada_medios": 115830,
+    "tokens_salida_medios": 1603,
+    "latencia_media_s": 26.6,
+    "latencia_mediana_s": 17.0
+  },
+  "por_condicion": {
+    "baseline": {
+      "n": 25,
+      "descartadas": 0,
+      "exitos": 19,
+      "tasa_exito": 0.76,
+      "eficiencia_media": 0.533,
+      "pasos_medios": 26.9,
+      "repeticion_media": 0.363,
+      "llamadas_llm_medias": 27.5,
+      "tokens_entrada_medios": 115830,
+      "tokens_salida_medios": 1603,
+      "latencia_media_s": 26.6,
+      "latencia_mediana_s": 17.0
+    }
+  },
+  "por_dificultad": {
+    "easy": {
+      "n": 5,
+      "descartadas": 0,
+      "exitos": 5,
+      "tasa_exito": 1.0,
+      "eficiencia_media": 0.72,
+      "pasos_medios": 4.2,
+      "repeticion_media": 0.0,
+      "llamadas_llm_medias": 5.2,
+      "tokens_entrada_medios": 9963,
+      "tokens_salida_medios": 288,
+      "latencia_media_s": 4.0,
+      "latencia_mediana_s": 3.9
+    },
+    "hard": {
+      "n": 10,
+      "descartadas": 0,
+      "exitos": 7,
+      "tasa_exito": 0.7,
+      "eficiencia_media": 0.358,
+      "pasos_medios": 38.6,
+      "repeticion_media": 0.464,
+      "llamadas_llm_medias": 39.0,
+      "tokens_entrada_medios": 182075,
+      "tokens_salida_medios": 2335,
+      "latencia_media_s": 38.9,
+      "latencia_mediana_s": 44.1
+    },
+    "medium": {
+      "n": 10,
+      "descartadas": 0,
+      "exitos": 7,
+      "tasa_exito": 0.7,
+      "eficiencia_media": 0.575,
+      "pasos_medios": 26.5,
+      "repeticion_media": 0.444,
+      "llamadas_llm_medias": 27.2,
+      "tokens_entrada_medios": 102518,
+      "tokens_salida_medios": 1529,
+      "latencia_media_s": 25.5,
+      "latencia_mediana_s": 17.4
+    }
+  },
+  "por_escenario": {
+    "apartment-keys": {
+      "n": 5,
+      "descartadas": 0,
+      "exitos": 3,
+      "tasa_exito": 0.6,
+      "eficiencia_media": 0.562,
+      "pasos_medios": 27.6,
+      "repeticion_media": 0.544,
+      "llamadas_llm_medias": 28.2,
+      "tokens_entrada_medios": 111542,
+      "tokens_salida_medios": 1613,
+      "latencia_media_s": 26.9,
+      "latencia_mediana_s": 12.7
+    },
+    "color-locks": {
+      "n": 5,
+      "descartadas": 0,
+      "exitos": 4,
+      "tasa_exito": 0.8,
+      "eficiencia_media": 0.584,
+      "pasos_medios": 25.4,
+      "repeticion_media": 0.343,
+      "llamadas_llm_medias": 26.2,
+      "tokens_entrada_medios": 93495,
+      "tokens_salida_medios": 1444,
+      "latencia_media_s": 24.1,
+      "latencia_mediana_s": 18.1
+    },
+    "library-search": {
+      "n": 5,
+      "descartadas": 0,
+      "exitos": 3,
+      "tasa_exito": 0.6,
+      "eficiencia_media": 0.346,
+      "pasos_medios": 33.4,
+      "repeticion_media": 0.251,
+      "llamadas_llm_medias": 34.0,
+      "tokens_entrada_medios": 199064,
+      "tokens_salida_medios": 2480,
+      "latencia_media_s": 37.3,
+      "latencia_mediana_s": 36.0
+    },
+    "office-sequence": {
+      "n": 5,
+      "descartadas": 0,
+      "exitos": 4,
+      "tasa_exito": 0.8,
+      "eficiencia_media": 0.366,
+      "pasos_medios": 43.8,
+      "repeticion_media": 0.678,
+      "llamadas_llm_medias": 44.0,
+      "tokens_entrada_medios": 165086,
+      "tokens_salida_medios": 2189,
+      "latencia_media_s": 40.6,
+      "latencia_mediana_s": 44.3
+    },
+    "study-with-key": {
+      "n": 5,
+      "descartadas": 0,
+      "exitos": 5,
+      "tasa_exito": 1.0,
+      "eficiencia_media": 0.72,
+      "pasos_medios": 4.2,
+      "repeticion_media": 0.0,
+      "llamadas_llm_medias": 5.2,
+      "tokens_entrada_medios": 9963,
+      "tokens_salida_medios": 288,
+      "latencia_media_s": 4.0,
+      "latencia_mediana_s": 3.9
+    }
+  },
+  "modos_de_fallo": {
+    "bucle": 6
+  },
+  "rubrica_media": {}
+}

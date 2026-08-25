@@ -674,3 +674,314 @@ def test_presupuesto_minimo_envia_solo_el_ultimo_user():
         assert len(messages) == 1
         assert messages[0]["role"] == "user"
     assert "dos" in mock.calls[-1]["messages"][0]["content"]
+
+
+# ---------------------------------------------------------------------------
+# Memoria de acciones (M3): registro compacto en el system prompt
+# ---------------------------------------------------------------------------
+
+
+def _llamada_a(nombre: str, args: dict, call_id: str = "c1") -> LLMResponse:
+    return LLMResponse(
+        content=None,
+        tool_calls=[ToolCall(id=call_id, name=nombre, arguments=json.dumps(args))],
+    )
+
+
+def test_memoria_de_acciones_apagada_por_defecto():
+    """El comportamiento de M1 y M2 no cambia si no se pide explícitamente."""
+    tool, schema = make_recording_tool()
+    mock = MockLLMClient([_llamada_a(schema.name, {"text": "x"}), LLMResponse(content="ok")])
+    agent = build_agent({"llm_client": mock, "system_prompt": "BASE."})
+    agent.register_tool(tool, schema)
+    agent.run("dale")
+
+    assert mock.calls[-1]["system"] == "BASE.", "sin pedirlo, el system no se toca"
+
+
+def test_memoria_registra_lo_ejecutado_en_el_system():
+    tool, schema = make_recording_tool(return_value="resultado")
+    mock = MockLLMClient([_llamada_a(schema.name, {"text": "x"}), LLMResponse(content="ok")])
+    agent = build_agent(
+        {"llm_client": mock, "system_prompt": "BASE.", "memoria_de_acciones": True}
+    )
+    agent.register_tool(tool, schema)
+    agent.run("dale")
+
+    system = mock.calls[-1]["system"]
+    assert system.startswith("BASE."), "el prompt original se conserva al inicio"
+    assert schema.name in system
+    assert "resultado" in system
+
+
+def test_memoria_separa_fallidas_de_exitosas():
+    """Las que fallaron van en su propia sección: son las que el agente
+    tiende a reintentar en bucle."""
+    tool, schema = make_recording_tool()
+    mock = MockLLMClient(
+        [
+            _llamada_a("inexistente", {}, "c1"),
+            _llamada_a(schema.name, {"text": "x"}, "c2"),
+            LLMResponse(content="ok"),
+        ]
+    )
+    agent = build_agent(
+        {"llm_client": mock, "system_prompt": "BASE.", "memoria_de_acciones": True}
+    )
+    agent.register_tool(tool, schema)
+    agent.run("dale")
+
+    system = mock.calls[-1]["system"]
+    assert "YA FALLARON" in system and "CON ÉXITO" in system
+    assert system.index("YA FALLARON") < system.index("CON ÉXITO"), (
+        "las fallidas van primero, que es lo que hay que dejar de repetir"
+    )
+
+
+def test_memoria_deduplica_y_cuenta_repeticiones():
+    """Diez llamadas idénticas ocupan una línea, no diez."""
+    tool, schema = make_recording_tool()
+    mock = MockLLMClient(
+        [_llamada_a(schema.name, {"text": "x"}, f"c{i}") for i in range(4)]
+        + [LLMResponse(content="ok")]
+    )
+    agent = build_agent(
+        {"llm_client": mock, "system_prompt": "BASE.", "memoria_de_acciones": True}
+    )
+    agent.register_tool(tool, schema)
+    agent.run("dale")
+
+    system = mock.calls[-1]["system"]
+    assert system.count(f"- {schema.name}(") == 1, "la acción repetida aparece una vez"
+    assert "ya intentada 4 veces" in system
+
+
+def test_memoria_no_consume_presupuesto_de_ventana():
+    """Va en `system=`, fuera de la lista `messages`: ese es el punto."""
+    tool, schema = make_recording_tool()
+    mock = MockLLMClient(
+        [_llamada_a(schema.name, {"text": "x"}, f"c{i}") for i in range(3)]
+        + [LLMResponse(content="ok")]
+    )
+    agent = build_agent(
+        {
+            "llm_client": mock,
+            "system_prompt": "BASE.",
+            "memoria_de_acciones": True,
+            "max_history_messages": 4,
+        }
+    )
+    agent.register_tool(tool, schema)
+    agent.run("dale")
+
+    for llamada in mock.calls:
+        assert len(llamada["messages"]) <= 4, "el tope de la ventana sigue rigiendo"
+    assert len(mock.calls[-1]["system"]) > len("BASE."), "y la memoria llegó igual"
+
+
+def test_accion_improductiva_avisa_pero_no_altera_el_step():
+    """Repetir una acción con resultado idéntico agrega un aviso al mensaje
+    que ve el modelo, pero el `AgentStep` conserva la salida exacta de la
+    herramienta (contrato de M1)."""
+    tool, schema = make_recording_tool(return_value="siempre lo mismo")
+    mock = MockLLMClient(
+        [
+            _llamada_a(schema.name, {"text": "x"}, "c1"),
+            _llamada_a(schema.name, {"text": "x"}, "c2"),
+            LLMResponse(content="ok"),
+        ]
+    )
+    agent = build_agent({"llm_client": mock, "memoria_de_acciones": True})
+    agent.register_tool(tool, schema)
+    result = agent.run("dale")
+
+    assert [s.tool_output for s in result.steps] == ["siempre lo mismo"] * 2, (
+        "el AgentStep debe guardar el valor exacto que devolvió la tool"
+    )
+    mensajes_tool = [
+        m for m in mock.calls[-1]["messages"] if m.get("role") == "tool"
+    ]
+    assert "AVISO DEL SISTEMA" not in mensajes_tool[0]["content"], (
+        "la primera vez no hay nada que avisar"
+    )
+    assert "AVISO DEL SISTEMA" in mensajes_tool[1]["content"], (
+        "la repetición idéntica sí debe avisarse"
+    )
+
+
+def test_misma_accion_con_resultado_distinto_no_se_marca():
+    """`look()` después de moverse de sala devuelve otra cosa: eso NO es una
+    repetición improductiva y no debe desalentarse."""
+    from typing import Annotated
+
+    from pydantic import Field
+
+    from mia_agents.types import ToolSchema
+
+    salidas = iter(["sala A", "sala B"])
+
+    def mirar() -> str:
+        """Describe la sala actual."""
+        return next(salidas)
+
+    schema = ToolSchema.from_callable(mirar)
+    mock = MockLLMClient(
+        [
+            LLMResponse(content=None, tool_calls=[ToolCall(id="c1", name="mirar", arguments="{}")]),
+            LLMResponse(content=None, tool_calls=[ToolCall(id="c2", name="mirar", arguments="{}")]),
+            LLMResponse(content="ok"),
+        ]
+    )
+    agent = build_agent({"llm_client": mock, "memoria_de_acciones": True})
+    agent.register_tool(mirar, schema)
+    agent.run("dale")
+
+    mensajes_tool = [m for m in mock.calls[-1]["messages"] if m.get("role") == "tool"]
+    assert all("AVISO DEL SISTEMA" not in m["content"] for m in mensajes_tool), (
+        "misma firma con resultado distinto es información nueva, no un bucle"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Bloqueo de repeticiones estériles (M3)
+# ---------------------------------------------------------------------------
+
+
+def test_bloqueo_recien_actua_a_la_tercera():
+    """Las dos primeras ejecuciones corren: hace falta la segunda para
+    comprobar que el resultado no cambia. La tercera se bloquea."""
+    tool, schema = make_recording_tool(return_value="siempre igual")
+    mock = MockLLMClient(
+        [_llamada_a(schema.name, {"text": "x"}, f"c{i}") for i in range(3)]
+        + [LLMResponse(content="fin")]
+    )
+    agent = build_agent({"llm_client": mock, "bloquear_repeticiones": True})
+    agent.register_tool(tool, schema)
+    result = agent.run("dale")
+
+    assert len(tool.calls) == 2, "la tercera no debe llegar a ejecutarse"
+    assert result.steps[0].error is None and result.steps[1].error is None
+    assert "bloqueada" in (result.steps[2].error or "").lower()
+
+
+def test_bloqueo_se_levanta_si_el_resultado_cambia():
+    """`look()` tras moverse de sala devuelve otra cosa: deja de ser estéril
+    y se puede volver a llamar. Sin esto, se rompería la navegación."""
+    from mia_agents.types import ToolSchema
+
+    salidas = iter(["sala A", "sala A", "sala B", "sala B"])
+
+    def mirar() -> str:
+        """Describe la sala actual."""
+        return next(salidas)
+
+    schema = ToolSchema.from_callable(mirar)
+    mock = MockLLMClient(
+        [
+            LLMResponse(content=None, tool_calls=[ToolCall(id=f"c{i}", name="mirar", arguments="{}")])
+            for i in range(4)
+        ]
+        + [LLMResponse(content="fin")]
+    )
+    agent = build_agent({"llm_client": mock, "bloquear_repeticiones": True})
+    agent.register_tool(mirar, schema)
+    result = agent.run("dale")
+
+    errores = [s.error for s in result.steps]
+    assert errores[0] is None and errores[1] is None
+    assert "bloqueada" in (errores[2] or "").lower(), "la 3ra idéntica se bloquea"
+    assert errores[3] is None, (
+        "tras cambiar el resultado la marca se levanta y vuelve a ejecutarse"
+    )
+
+
+def test_bloqueo_apagado_por_defecto():
+    tool, schema = make_recording_tool(return_value="igual")
+    mock = MockLLMClient(
+        [_llamada_a(schema.name, {"text": "x"}, f"c{i}") for i in range(3)]
+        + [LLMResponse(content="fin")]
+    )
+    agent = build_agent({"llm_client": mock})
+    agent.register_tool(tool, schema)
+    agent.run("dale")
+
+    assert len(tool.calls) == 3, "sin el flag, nada se bloquea"
+
+
+# ---------------------------------------------------------------------------
+# Planificación previa (M3)
+# ---------------------------------------------------------------------------
+
+
+def _plan_valido(call_id: str = "p1") -> LLMResponse:
+    return LLMResponse(
+        content=None,
+        tool_calls=[
+            ToolCall(
+                id=call_id,
+                name=FINAL_RESULT_TOOL_NAME,
+                arguments=json.dumps(
+                    {"objetivo": "abrir la puerta", "pasos": ["mirar", "tomar la llave"]}
+                ),
+            )
+        ],
+    )
+
+
+def test_planificar_apagado_por_defecto():
+    mock = MockLLMClient([LLMResponse(content="ok")])
+    agent = build_agent({"llm_client": mock, "system_prompt": "BASE."})
+    agent.run("resolvé la sala")
+
+    assert mock.call_count == 1, "sin el flag no debe pedirse ningún plan"
+    assert mock.calls[0]["system"] == "BASE."
+
+
+def test_el_plan_viaja_en_el_system_no_en_los_mensajes():
+    """El plan va por `system=`, fuera del presupuesto de la ventana: esa es
+    toda la razón de ser del diseño."""
+    mock = MockLLMClient([_plan_valido(), LLMResponse(content="ok")])
+    agent = build_agent(
+        {"llm_client": mock, "system_prompt": "BASE.", "planificar": True}
+    )
+    agent.run("resolvé la sala")
+
+    # calls[0] = planificación; calls[1] = primera vuelta del bucle
+    system_bucle = mock.calls[1]["system"]
+    assert "TU PLAN" in system_bucle
+    assert "tomar la llave" in system_bucle
+    assert "tomar la llave" not in str(mock.calls[1]["messages"]), (
+        "el plan no debe ocupar lugar en la lista de mensajes"
+    )
+
+
+def test_el_plan_se_pide_una_sola_vez():
+    """Replanificar en cada turno costaría una llamada por iteración."""
+    mock = MockLLMClient(
+        [_plan_valido(), LLMResponse(content="r1"), LLMResponse(content="r2")]
+    )
+    agent = build_agent({"llm_client": mock, "planificar": True})
+    agent.run("primer turno")
+    agent.run("segundo turno")
+
+    assert mock.call_count == 3, "1 planificación + 2 turnos, no 2 planificaciones"
+
+
+def test_si_falla_la_planificacion_el_agente_sigue():
+    """Un agente sin plan es el comportamiento anterior, que funciona el 80%
+    de las veces: que el plan no salga no puede ser peor que no intentarlo."""
+    mock = MockLLMClient(
+        [
+            LLMResponse(content="no pienso planificar"),
+            LLMResponse(content="tampoco"),
+            LLMResponse(content="ni ahí"),
+            LLMResponse(content="pero igual resuelvo"),
+        ]
+    )
+    agent = build_agent(
+        {"llm_client": mock, "system_prompt": "BASE.", "planificar": True}
+    )
+    result = agent.run("resolvé la sala")
+
+    assert result.answer == "pero igual resuelvo"
+    assert mock.calls[-1]["system"] == "BASE.", "sin plan, el system queda intacto"

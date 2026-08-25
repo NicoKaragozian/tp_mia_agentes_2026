@@ -7,3 +7,15 @@
 docs/plan-*.md
 # Orquestación interna del equipo (no se entrega)
 docs/README.md
+
+# Trazas crudas de la evaluación: 93 MB, se regeneran con `python eval/run.py`.
+# Los resúmenes agregados SÍ se versionan (4 KB cada uno): son la evidencia
+# de los números del informe sin arrastrar los megas de las trazas.
+eval/results/**/trazas.json
+eval/results/**/*__*.json
+
+# Credenciales: NUNCA se versionan
+.env
+.env.*
+!.env.example
+.aws/

@@ -171,6 +171,9 @@ class MyAgent:
         max_history_messages: int = 50,
         max_retries: int = 2,
         retry_base_delay: float = 0.2,
+        memoria_de_acciones: bool = False,
+        bloquear_repeticiones: bool = False,
+        planificar: bool = False,
     ) -> None:
         """Inicializa el agente.
 
@@ -195,6 +198,20 @@ class MyAgent:
             Espera base (segundos) del backoff exponencial entre
             reintentos: base, 2*base, 4*base, ... Con 0 no se duerme
             (útil en tests).
+        memoria_de_acciones : bool
+            Si es `True`, el agente mantiene un registro compacto de las
+            herramientas que ya ejecutó en esta conversación y lo agrega al
+            system prompt en cada llamada. Ver `_bloque_de_acciones`.
+            Apagado por defecto: el comportamiento de M1 y M2 no cambia.
+        bloquear_repeticiones : bool
+            Si es `True`, el agente se niega a ejecutar una llamada que ya
+            demostró ser improductiva. Ver `_es_repeticion_esteril`.
+            Apagado por defecto.
+        planificar : bool
+            Si es `True`, antes de entrar al bucle el agente escribe un plan
+            de sub-objetivos con `structured_call` y lo mantiene en el system
+            prompt durante toda la corrida. Ver `_preparar_plan`.
+            Apagado por defecto.
         """
         # Validación de la configuración. El caso interesante es
         # `max_history_messages`: un tope de 0 (o negativo) es CONTRADICTORIO
@@ -221,6 +238,13 @@ class MyAgent:
         self._max_history_messages = max_history_messages
         self._max_retries = max_retries
         self._retry_base_delay = retry_base_delay
+        self._memoria_de_acciones = memoria_de_acciones
+        self._bloquear_repeticiones = bloquear_repeticiones
+        self._planificar = planificar
+        #: Bloque de texto del plan vigente, o "" si no se planificó.
+        self._plan_texto: str = ""
+        #: (herramienta, argumentos) -> [veces, desenlace resumido]
+        self._acciones: dict[tuple[str, str], list[Any]] = {}
         # Memoria de la conversación (M2). Historial completo y persistente
         # entre llamadas a `run`: acá se escribe TODO (turnos de usuario,
         # del assistant y resultados de tools). Lo que se envía al LLM en
@@ -274,6 +298,7 @@ class MyAgent:
         tokens quedan en `None`; si alguno reportó, se suma tratando los
         `None` por-respuesta como 0 (regla del docstring de `AgentResult`).
         """
+        self._preparar_plan(user_message)
         self._history.append({"role": "user", "content": user_message})
         steps: list[AgentStep] = []
         tokens_entrada = 0
@@ -291,7 +316,7 @@ class MyAgent:
                     # Sin tools registradas pasamos None; el contrato exige
                     # que, si hay tools, su nombre aparezca en la lista.
                     tools=list(self._schemas.values()) or None,
-                    system=self._system,
+                    system=self._system_efectivo(),
                 )
             )
             if response.input_tokens is not None or response.output_tokens is not None:
@@ -326,6 +351,7 @@ class MyAgent:
             self._history.append(self._assistant_turn(response))
             for call in response.tool_calls:
                 output, error = self._dispatch(call)
+                improductiva = self._registrar_accion(call, output, error)
                 steps.append(
                     AgentStep(
                         tool_name=call.name,
@@ -336,11 +362,18 @@ class MyAgent:
                 )
                 # Realimentamos el resultado (o el error) al LLM como un
                 # mensaje `role: "tool"` antes de volver a llamar a `chat`.
+                # Si la acción fue improductiva le adjuntamos un aviso: el
+                # `AgentStep` de arriba conserva la salida EXACTA de la
+                # herramienta (contrato de M1); lo que se enriquece es solo
+                # lo que ve el modelo.
+                contenido = output if error is None else error
+                if improductiva:
+                    contenido = f"{contenido}{self._AVISO_IMPRODUCTIVA}"
                 self._history.append(
                     {
                         "role": "tool",
                         "tool_call_id": call.id,
-                        "content": output if error is None else error,
+                        "content": contenido,
                     }
                 )
 
@@ -363,6 +396,149 @@ class MyAgent:
             input_tokens=tokens_entrada if alguien_reporto else None,
             output_tokens=tokens_salida if alguien_reporto else None,
         )
+
+    def _bloque_de_acciones(self) -> str:
+        """Resumen compacto de lo que el agente ya ejecutó, para el system prompt.
+
+        Por qué existe: el modo de fallo dominante que medimos en el M3 es el
+        **bucle** — el agente reinvoca acciones que ya ejecutó. La causa es
+        estructural: una corrida larga genera más mensajes de los que entran
+        en la ventana, así que sus propios intentos anteriores se le caen del
+        contexto y no puede saber que ya los hizo.
+
+        Agrandar la ventana no lo arregla: medimos que con 160 mensajes la
+        repetición sube a 74% (más contexto diluye la atención) y con 4
+        mensajes el agente directamente colapsa. El problema no es cuánta
+        conversación ve, sino que la información "esto ya lo intenté" está
+        diluida en decenas de mensajes en vez de estar resumida.
+
+        Este bloque va en el **system prompt**, que viaja por el parámetro
+        `system=` de `chat(...)` y por lo tanto NO consume presupuesto de la
+        ventana deslizante. Es memoria episódica: un log deduplicado de
+        `(herramienta, argumentos) -> desenlace`, con el conteo de veces que
+        se repitió.
+        """
+        if not self._acciones:
+            return ""
+        fallidas, exitosas = [], []
+        for (herramienta, args), (veces, desenlace, _sal, _est) in self._acciones.items():
+            repeticion = f" [ya intentada {veces} veces]" if veces > 1 else ""
+            linea = f"  - {herramienta}({args}) -> {desenlace}{repeticion}"
+            (fallidas if desenlace.startswith("ERROR") else exitosas).append(linea)
+
+        partes = []
+        if fallidas:
+            # Las fallidas van primero y con el aviso más fuerte: son las que
+            # el agente tiende a reintentar en bucle.
+            partes.append(
+                "ACCIONES QUE YA FALLARON. Repetirlas dará EXACTAMENTE el mismo "
+                "error: está prohibido. Leé el error y hacé algo DISTINTO.\n"
+                + "\n".join(fallidas)
+            )
+        if exitosas:
+            partes.append(
+                "ACCIONES QUE YA HICISTE CON ÉXITO. Su información ya la tenés; "
+                "repetirlas no aporta nada nuevo y desperdicia turnos.\n"
+                + "\n".join(exitosas)
+            )
+        return "\n\n" + "\n\n".join(partes)
+
+    def _registrar_accion(
+        self, call: ToolCall, salida: str | None, error: str | None
+    ) -> bool:
+        """Anota una invocación en la memoria. Devuelve si fue improductiva.
+
+        "Improductiva" = esta misma llamada, con los mismos argumentos, ya se
+        había hecho antes **y devolvió exactamente lo mismo**. Comparar la
+        salida y no solo la firma es lo que hace correcta la detección: en un
+        escenario multi-sala, `look()` repetido devuelve algo DISTINTO después
+        de un `go`, y prohibirlo por firma rompería la navegación. Si el texto
+        es idéntico, en cambio, la acción no aportó información nueva.
+
+        Es el modo de fallo dominante que medimos: 4 de 6 fracasos con Nova
+        Lite fueron `look()` repetido entre 21 y 48 veces.
+        """
+        if not (self._memoria_de_acciones or self._bloquear_repeticiones):
+            return False
+        texto = error or salida or ""
+        fallo = bool(error) or texto.startswith("Error")
+        desenlace = f"{'ERROR' if fallo else 'ok'}: {texto[:90]}"
+        clave = (call.name, (call.arguments or "").strip())
+
+        anterior = self._acciones.get(clave)
+        if anterior is None:
+            self._acciones[clave] = [1, desenlace, texto, False]
+            return False
+        anterior[0] += 1
+        anterior[1] = desenlace
+        improductiva = anterior[2] == texto
+        anterior[2] = texto
+        # Queda "confirmada" cuando dos ejecuciones seguidas devolvieron lo
+        # mismo. Si el resultado cambia (p. ej. `look` tras un `go`), la
+        # marca se levanta: dejó de ser estéril.
+        anterior[3] = improductiva
+        return improductiva
+
+    #: Aviso que se adjunta al resultado cuando una acción no aportó nada.
+    _AVISO_IMPRODUCTIVA = (
+        "\n\n[AVISO DEL SISTEMA: esta acción ya la ejecutaste antes y devolvió "
+        "EXACTAMENTE lo mismo. No aportó información nueva. Dejá de repetirla y "
+        "elegí una acción diferente: examiná algo que todavía no examinaste, "
+        "tomá un objeto que hayas encontrado, o usá algo de tu inventario.]"
+    )
+
+    def _system_efectivo(self) -> str:
+        """System prompt, más el plan y la memoria de acciones si están activos.
+
+        Ambos anexos viajan por `system=`, o sea FUERA del presupuesto de la
+        ventana deslizante. Esa es toda la idea: siguen visibles justo cuando
+        el historial ya se recortó, que es cuando aparecen los bucles.
+        """
+        partes = [self._system, self._plan_texto]
+        if self._memoria_de_acciones:
+            partes.append(self._bloque_de_acciones())
+        return "".join(p for p in partes if p)
+
+    def _preparar_plan(self, user_message: str) -> None:
+        """Pide un plan de sub-objetivos antes de tocar el mundo.
+
+        Usa `structured_call` (M2), así que el plan vuelve validado contra un
+        schema Pydantic y con reparación automática. Se pide UNA sola vez por
+        instancia: replanificar en cada turno costaría una llamada extra por
+        iteración y el plan quedaría sujeto al mismo ruido que queremos evitar.
+
+        Si el planificador falla, se sigue sin plan: un agente sin plan es el
+        comportamiento anterior, que funciona el 80% de las veces. Que el
+        plan no salga no puede ser peor que no haberlo intentado.
+        """
+        if not self._planificar or self._plan_texto:
+            return
+        from student_framework.planner import (
+            PROMPT_PLANIFICAR,
+            SYSTEM_PLANIFICADOR,
+            Plan,
+            bloque_de_plan,
+        )
+
+        # El planificador corre en su propio agente para no ensuciar la
+        # conversación del bucle con el intercambio de planificación.
+        planificador = MyAgent(
+            llm_client=self._llm,
+            system_prompt=SYSTEM_PLANIFICADOR,
+            max_retries=self._max_retries,
+            retry_base_delay=self._retry_base_delay,
+        )
+        try:
+            plan = planificador.structured_call(
+                prompt=PROMPT_PLANIFICAR.format(
+                    consigna=user_message,
+                    herramientas=", ".join(sorted(self._schemas)) or "(ninguna)",
+                ),
+                schema=Plan,
+            )
+        except Exception:  # noqa: BLE001 — sin plan se sigue igual
+            return
+        self._plan_texto = bloque_de_plan(plan)
 
     def _ventana(
         self,
@@ -485,17 +661,104 @@ class MyAgent:
         """
         tool = self._tools.get(call.name)
         if tool is None:
-            return None, f"Herramienta desconocida: {call.name!r}."
+            disponibles = ", ".join(sorted(self._schemas)) or "(ninguna)"
+            return None, (
+                f"Herramienta desconocida: {call.name!r}. "
+                f"Herramientas disponibles: {disponibles}."
+            )
 
         try:
             kwargs = json.loads(call.arguments) if call.arguments else {}
         except json.JSONDecodeError as exc:
             return None, f"Argumentos JSON inválidos para {call.name!r}: {exc}."
+        if not isinstance(kwargs, dict):
+            return None, (
+                f"Los argumentos de {call.name!r} deben ser un objeto JSON con "
+                f"los nombres de parámetro; recibí {type(kwargs).__name__}."
+            )
+
+        error_args = self._validar_argumentos(call.name, kwargs)
+        if error_args is not None:
+            return None, error_args
+
+        if self._es_repeticion_esteril(call):
+            return None, (
+                f"Acción bloqueada: ya ejecutaste {call.name} con estos mismos "
+                f"argumentos dos veces y devolvió EXACTAMENTE lo mismo, así que "
+                f"no aporta nada nuevo. No se ejecutó. Elegí una acción "
+                f"diferente: examiná algo que no hayas examinado, tomá un objeto "
+                f"que hayas encontrado, o usá algo de tu inventario."
+            )
 
         try:
             return self._con_reintentos(lambda: tool(**kwargs)), None
         except Exception as exc:  # noqa: BLE001 — una tool puede fallar; no rompemos el bucle.
             return None, f"Error al ejecutar {call.name!r}: {exc}."
+
+    def _es_repeticion_esteril(self, call: ToolCall) -> bool:
+        """True si esta llamada ya demostró que repetirla no cambia nada.
+
+        No se puede saber de antemano si una llamada devolverá lo mismo: hay
+        que ejecutarla. Y ejecutar no es gratis — `take`, `use` y `go` mutan
+        el mundo. Por eso el bloqueo recién actúa a partir de la TERCERA
+        ejecución idéntica, cuando la segunda ya comprobó empíricamente que
+        el resultado no cambió.
+
+        La marca se levanta sola si el resultado vuelve a cambiar. Eso es lo
+        que hace correcto el bloqueo en escenarios multi-sala: `look()` tras
+        un `go` devuelve otra descripción, deja de estar marcada y se puede
+        volver a llamar.
+
+        Motivación: el 100% de los fracasos que medimos con Nova Lite son
+        bucles, y las corridas fallidas ejecutan 50-100 pasos con apenas 7-8
+        acciones distintas. Avisarle al modelo no alcanzó (experimento E3);
+        esto se lo impide.
+        """
+        if not self._bloquear_repeticiones:
+            return False
+        entrada = self._acciones.get((call.name, (call.arguments or "").strip()))
+        return bool(entrada and entrada[3])
+
+    def _validar_argumentos(self, nombre: str, kwargs: dict[str, Any]) -> str | None:
+        """Compara los argumentos contra el esquema. Devuelve error o `None`.
+
+        Por qué existe: el LLM adivina los nombres de los parámetros, y
+        cuando yerra, invocar el callable levanta un `TypeError` de CPython
+        ("got an unexpected keyword argument 'objeto'") que filtra internals
+        y —lo importante— **no dice cuál era el nombre correcto**. El modelo
+        se queda adivinando y entra en bucle.
+
+        Como el esquema registrado ya declara los parámetros, podemos
+        responder algo accionable: qué se esperaba, qué llegó y, cuando el
+        mapeo es evidente (sobra uno y falta uno), cuál era el que iba.
+        Mismo principio que los errores de las tools en M2, aplicado a la
+        capa de despacho.
+        """
+        schema = self._schemas.get(nombre)
+        if schema is None:  # registrada sin esquema: no hay contra qué validar
+            return None
+        parametros = schema.parameters.get("properties") or {}
+        esperados = set(parametros)
+        requeridos = set(schema.parameters.get("required") or [])
+        sobrantes = sorted(set(kwargs) - esperados)
+        faltantes = sorted(requeridos - set(kwargs))
+        if not sobrantes and not faltantes:
+            return None
+
+        firma = ", ".join(sorted(esperados)) or "(sin parámetros)"
+        partes = [f"Argumentos inválidos para {nombre!r}."]
+        if sobrantes:
+            partes.append(f"No existe(n) el/los parámetro(s): {', '.join(sobrantes)}.")
+        if faltantes:
+            partes.append(f"Falta(n) el/los requerido(s): {', '.join(faltantes)}.")
+        if len(sobrantes) == 1 and len(faltantes) == 1:
+            # Caso típico: el modelo tradujo el nombre del parámetro.
+            partes.append(
+                f"Probablemente quisiste decir {faltantes[0]!r} en lugar de "
+                f"{sobrantes[0]!r}."
+            )
+        partes.append(f"Parámetros válidos: {firma}.")
+        return " ".join(partes)
 
     @staticmethod
     def _assistant_turn(response: LLMResponse) -> dict[str, Any]:

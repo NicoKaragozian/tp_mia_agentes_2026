@@ -39,6 +39,9 @@ def build_agent(config: dict[str, Any] | None = None) -> Agent:
         "max_history_messages",
         "max_retries",
         "retry_base_delay",
+        "memoria_de_acciones",
+        "bloquear_repeticiones",
+        "planificar",
     ):
         if clave in config:
             kwargs[clave] = config[clave]
@@ -48,9 +51,18 @@ def build_agent(config: dict[str, Any] | None = None) -> Agent:
     # Registro por auto-descubrimiento: cada módulo en `tools/` que exponga
     # `TOOLS = [(fn, schema)]` se recolecta en `REGISTRY`. Agregar una tool
     # NO requiere tocar este archivo (ver student_framework/tools/__init__.py).
-    from student_framework.tools import REGISTRY
+    #
+    # `tools_por_defecto=False` devuelve el agente sin ninguna herramienta,
+    # para que quien lo construye registre solo las del dominio. Lo pide la
+    # evaluación del M3: al correr la sala de escape, las tools de M1/M2
+    # (calculadora, lector, contador de palabras) son distractores que no
+    # resuelven nada, ocupan contexto en cada llamada y ensucian la medición.
+    # El valor por defecto es `True`, así que el comportamiento de M1/M2 y de
+    # `mia_world.cli` no cambia.
+    if config.get("tools_por_defecto", True):
+        from student_framework.tools import REGISTRY
 
-    for tool, schema in REGISTRY:
-        agent.register_tool(tool, schema)
+        for tool, schema in REGISTRY:
+            agent.register_tool(tool, schema)
 
     return agent

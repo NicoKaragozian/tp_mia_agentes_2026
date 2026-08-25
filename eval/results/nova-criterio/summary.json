@@ -1,0 +1,154 @@
+{
+  "n_corridas": 10,
+  "modelo": "bedrock:amazon.nova-lite-v1:0",
+  "global": {
+    "n": 10,
+    "descartadas": 0,
+    "exitos": 8,
+    "tasa_exito": 0.8,
+    "eficiencia_media": 0.561,
+    "pasos_medios": 26.4,
+    "repeticion_media": 0.349,
+    "llamadas_llm_medias": 27.0,
+    "tokens_entrada_medios": 99906,
+    "tokens_salida_medios": 1386,
+    "latencia_media_s": 23.5,
+    "latencia_mediana_s": 13.3
+  },
+  "por_condicion": {
+    "baseline": {
+      "n": 10,
+      "descartadas": 0,
+      "exitos": 8,
+      "tasa_exito": 0.8,
+      "eficiencia_media": 0.561,
+      "pasos_medios": 26.4,
+      "repeticion_media": 0.349,
+      "llamadas_llm_medias": 27.0,
+      "tokens_entrada_medios": 99906,
+      "tokens_salida_medios": 1386,
+      "latencia_media_s": 23.5,
+      "latencia_mediana_s": 13.3
+    }
+  },
+  "por_dificultad": {
+    "easy": {
+      "n": 2,
+      "descartadas": 0,
+      "exitos": 2,
+      "tasa_exito": 1.0,
+      "eficiencia_media": 0.675,
+      "pasos_medios": 4.5,
+      "repeticion_media": 0.0,
+      "llamadas_llm_medias": 5.5,
+      "tokens_entrada_medios": 9174,
+      "tokens_salida_medios": 271,
+      "latencia_media_s": 4.1,
+      "latencia_mediana_s": 4.1
+    },
+    "hard": {
+      "n": 4,
+      "descartadas": 0,
+      "exitos": 2,
+      "tasa_exito": 0.5,
+      "eficiencia_media": 0.26,
+      "pasos_medios": 50.0,
+      "repeticion_media": 0.65,
+      "llamadas_llm_medias": 50.0,
+      "tokens_entrada_medios": 210591,
+      "tokens_salida_medios": 2518,
+      "latencia_media_s": 45.0,
+      "latencia_mediana_s": 43.8
+    },
+    "medium": {
+      "n": 4,
+      "descartadas": 0,
+      "exitos": 4,
+      "tasa_exito": 1.0,
+      "eficiencia_media": 0.654,
+      "pasos_medios": 13.8,
+      "repeticion_media": 0.224,
+      "llamadas_llm_medias": 14.8,
+      "tokens_entrada_medios": 34588,
+      "tokens_salida_medios": 811,
+      "latencia_media_s": 11.8,
+      "latencia_mediana_s": 11.0
+    }
+  },
+  "por_escenario": {
+    "apartment-keys": {
+      "n": 2,
+      "descartadas": 0,
+      "exitos": 2,
+      "tasa_exito": 1.0,
+      "eficiencia_media": 0.561,
+      "pasos_medios": 12.5,
+      "repeticion_media": 0.359,
+      "llamadas_llm_medias": 13.5,
+      "tokens_entrada_medios": 29456,
+      "tokens_salida_medios": 661,
+      "latencia_media_s": 10.3,
+      "latencia_mediana_s": 10.3
+    },
+    "color-locks": {
+      "n": 2,
+      "descartadas": 0,
+      "exitos": 2,
+      "tasa_exito": 1.0,
+      "eficiencia_media": 0.747,
+      "pasos_medios": 15.0,
+      "repeticion_media": 0.088,
+      "llamadas_llm_medias": 16.0,
+      "tokens_entrada_medios": 39720,
+      "tokens_salida_medios": 960,
+      "latencia_media_s": 13.3,
+      "latencia_mediana_s": 13.3
+    },
+    "library-search": {
+      "n": 2,
+      "descartadas": 0,
+      "exitos": 0,
+      "tasa_exito": 0.0,
+      "eficiencia_media": 0.0,
+      "pasos_medios": 50.0,
+      "repeticion_media": 0.59,
+      "llamadas_llm_medias": 50.0,
+      "tokens_entrada_medios": 257142,
+      "tokens_salida_medios": 2796,
+      "latencia_media_s": 48.1,
+      "latencia_mediana_s": 48.1
+    },
+    "office-sequence": {
+      "n": 2,
+      "descartadas": 0,
+      "exitos": 2,
+      "tasa_exito": 1.0,
+      "eficiencia_media": 0.26,
+      "pasos_medios": 50.0,
+      "repeticion_media": 0.71,
+      "llamadas_llm_medias": 50.0,
+      "tokens_entrada_medios": 164040,
+      "tokens_salida_medios": 2241,
+      "latencia_media_s": 41.9,
+      "latencia_mediana_s": 41.9
+    },
+    "study-with-key": {
+      "n": 2,
+      "descartadas": 0,
+      "exitos": 2,
+      "tasa_exito": 1.0,
+      "eficiencia_media": 0.675,
+      "pasos_medios": 4.5,
+      "repeticion_media": 0.0,
+      "llamadas_llm_medias": 5.5,
+      "tokens_entrada_medios": 9174,
+      "tokens_salida_medios": 271,
+      "latencia_media_s": 4.1,
+      "latencia_mediana_s": 4.1
+    }
+  },
+  "modos_de_fallo": {
+    "bucle": 2
+  },
+  "rubrica_media": {}
+}
