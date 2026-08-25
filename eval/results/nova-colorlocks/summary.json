@@ -63,6 +63,25 @@
       "latencia_mediana_s": 19.2
     }
   },
+  "por_condicion_escenario": {
+    "baseline": {
+      "color-locks": {
+        "n": 2,
+        "descartadas": 0,
+        "exitos": 2,
+        "tasa_exito": 1.0,
+        "eficiencia_media": 0.539,
+        "pasos_medios": 20.5,
+        "repeticion_media": 0.291,
+        "llamadas_llm_medias": 21.5,
+        "tokens_entrada_medios": 60372,
+        "tokens_salida_medios": 1275,
+        "latencia_media_s": 19.2,
+        "latencia_mediana_s": 19.2
+      }
+    }
+  },
   "modos_de_fallo": {},
-  "rubrica_media": {}
+  "rubrica_media": {},
+  "rubrica_por_condicion": {}
 }

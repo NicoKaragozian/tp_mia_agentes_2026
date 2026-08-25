@@ -161,6 +161,152 @@
       "latencia_mediana_s": 4.7
     }
   },
+  "por_condicion_escenario": {
+    "baseline": {
+      "apartment-keys": {
+        "n": 10,
+        "descartadas": 0,
+        "exitos": 7,
+        "tasa_exito": 0.7,
+        "eficiencia_media": 0.507,
+        "pasos_medios": 39.8,
+        "repeticion_media": 0.569,
+        "llamadas_llm_medias": 40.5,
+        "tokens_entrada_medios": 158756,
+        "tokens_salida_medios": 2187,
+        "latencia_media_s": 36.3,
+        "latencia_mediana_s": 13.0
+      },
+      "color-locks": {
+        "n": 10,
+        "descartadas": 0,
+        "exitos": 6,
+        "tasa_exito": 0.6,
+        "eficiencia_media": 0.565,
+        "pasos_medios": 52.3,
+        "repeticion_media": 0.509,
+        "llamadas_llm_medias": 52.9,
+        "tokens_entrada_medios": 204674,
+        "tokens_salida_medios": 3097,
+        "latencia_media_s": 49.3,
+        "latencia_mediana_s": 24.5
+      },
+      "library-search": {
+        "n": 10,
+        "descartadas": 0,
+        "exitos": 5,
+        "tasa_exito": 0.5,
+        "eficiencia_media": 0.408,
+        "pasos_medios": 59.0,
+        "repeticion_media": 0.474,
+        "llamadas_llm_medias": 57.4,
+        "tokens_entrada_medios": 365002,
+        "tokens_salida_medios": 3914,
+        "latencia_media_s": 60.8,
+        "latencia_mediana_s": 63.3
+      },
+      "office-sequence": {
+        "n": 10,
+        "descartadas": 0,
+        "exitos": 8,
+        "tasa_exito": 0.8,
+        "eficiencia_media": 0.187,
+        "pasos_medios": 92.3,
+        "repeticion_media": 0.818,
+        "llamadas_llm_medias": 92.3,
+        "tokens_entrada_medios": 346386,
+        "tokens_salida_medios": 4314,
+        "latencia_media_s": 80.6,
+        "latencia_mediana_s": 86.1
+      },
+      "study-with-key": {
+        "n": 10,
+        "descartadas": 0,
+        "exitos": 9,
+        "tasa_exito": 0.9,
+        "eficiencia_media": 0.608,
+        "pasos_medios": 14.6,
+        "repeticion_media": 0.12,
+        "llamadas_llm_medias": 15.5,
+        "tokens_entrada_medios": 53854,
+        "tokens_salida_medios": 830,
+        "latencia_media_s": 13.6,
+        "latencia_mediana_s": 4.6
+      }
+    },
+    "prompt_generico": {
+      "apartment-keys": {
+        "n": 10,
+        "descartadas": 0,
+        "exitos": 10,
+        "tasa_exito": 1.0,
+        "eficiencia_media": 0.534,
+        "pasos_medios": 20.9,
+        "repeticion_media": 0.389,
+        "llamadas_llm_medias": 21.5,
+        "tokens_entrada_medios": 48353,
+        "tokens_salida_medios": 1050,
+        "latencia_media_s": 17.0,
+        "latencia_mediana_s": 9.4
+      },
+      "color-locks": {
+        "n": 10,
+        "descartadas": 0,
+        "exitos": 3,
+        "tasa_exito": 0.3,
+        "eficiencia_media": 0.545,
+        "pasos_medios": 77.2,
+        "repeticion_media": 0.655,
+        "llamadas_llm_medias": 67.3,
+        "tokens_entrada_medios": 232140,
+        "tokens_salida_medios": 4591,
+        "latencia_media_s": 65.3,
+        "latencia_mediana_s": 91.9
+      },
+      "library-search": {
+        "n": 10,
+        "descartadas": 0,
+        "exitos": 5,
+        "tasa_exito": 0.5,
+        "eficiencia_media": 0.394,
+        "pasos_medios": 63.5,
+        "repeticion_media": 0.386,
+        "llamadas_llm_medias": 49.6,
+        "tokens_entrada_medios": 300117,
+        "tokens_salida_medios": 3595,
+        "latencia_media_s": 54.7,
+        "latencia_mediana_s": 27.4
+      },
+      "office-sequence": {
+        "n": 10,
+        "descartadas": 0,
+        "exitos": 7,
+        "tasa_exito": 0.7,
+        "eficiencia_media": 0.265,
+        "pasos_medios": 84.6,
+        "repeticion_media": 0.787,
+        "llamadas_llm_medias": 84.2,
+        "tokens_entrada_medios": 251239,
+        "tokens_salida_medios": 4168,
+        "latencia_media_s": 75.0,
+        "latencia_mediana_s": 89.3
+      },
+      "study-with-key": {
+        "n": 10,
+        "descartadas": 0,
+        "exitos": 10,
+        "tasa_exito": 1.0,
+        "eficiencia_media": 0.563,
+        "pasos_medios": 5.6,
+        "repeticion_media": 0.179,
+        "llamadas_llm_medias": 6.6,
+        "tokens_entrada_medios": 7338,
+        "tokens_salida_medios": 389,
+        "latencia_media_s": 5.1,
+        "latencia_mediana_s": 4.8
+      }
+    }
+  },
   "modos_de_fallo": {
     "bucle": 28,
     "accion_invalida": 2
@@ -169,5 +315,17 @@
     "coherencia_plan": 3.18,
     "recuperacion_errores": 3.14,
     "exploracion_eficiente": 3.04
+  },
+  "rubrica_por_condicion": {
+    "baseline": {
+      "coherencia_plan": 3.16,
+      "recuperacion_errores": 3.06,
+      "exploracion_eficiente": 2.98
+    },
+    "prompt_generico": {
+      "coherencia_plan": 3.2,
+      "recuperacion_errores": 3.22,
+      "exploracion_eficiente": 3.1
+    }
   }
 }

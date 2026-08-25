@@ -147,6 +147,80 @@
       "latencia_mediana_s": 4.0
     }
   },
+  "por_condicion_escenario": {
+    "baseline": {
+      "apartment-keys": {
+        "n": 10,
+        "descartadas": 0,
+        "exitos": 9,
+        "tasa_exito": 0.9,
+        "eficiencia_media": 0.496,
+        "pasos_medios": 23.2,
+        "repeticion_media": 0.444,
+        "llamadas_llm_medias": 24.1,
+        "tokens_entrada_medios": 78064,
+        "tokens_salida_medios": 1308,
+        "latencia_media_s": 21.3,
+        "latencia_mediana_s": 12.3
+      },
+      "color-locks": {
+        "n": 10,
+        "descartadas": 0,
+        "exitos": 8,
+        "tasa_exito": 0.8,
+        "eficiencia_media": 0.442,
+        "pasos_medios": 40.7,
+        "repeticion_media": 0.469,
+        "llamadas_llm_medias": 40.4,
+        "tokens_entrada_medios": 155430,
+        "tokens_salida_medios": 2601,
+        "latencia_media_s": 39.8,
+        "latencia_mediana_s": 23.2
+      },
+      "library-search": {
+        "n": 10,
+        "descartadas": 0,
+        "exitos": 5,
+        "tasa_exito": 0.5,
+        "eficiencia_media": 0.413,
+        "pasos_medios": 59.2,
+        "repeticion_media": 0.461,
+        "llamadas_llm_medias": 57.6,
+        "tokens_entrada_medios": 412675,
+        "tokens_salida_medios": 3714,
+        "latencia_media_s": 60.8,
+        "latencia_mediana_s": 55.9
+      },
+      "office-sequence": {
+        "n": 10,
+        "descartadas": 0,
+        "exitos": 8,
+        "tasa_exito": 0.8,
+        "eficiencia_media": 0.31,
+        "pasos_medios": 76.5,
+        "repeticion_media": 0.732,
+        "llamadas_llm_medias": 76.7,
+        "tokens_entrada_medios": 293472,
+        "tokens_salida_medios": 3630,
+        "latencia_media_s": 68.0,
+        "latencia_mediana_s": 87.6
+      },
+      "study-with-key": {
+        "n": 10,
+        "descartadas": 0,
+        "exitos": 10,
+        "tasa_exito": 1.0,
+        "eficiencia_media": 0.72,
+        "pasos_medios": 4.2,
+        "repeticion_media": 0.0,
+        "llamadas_llm_medias": 5.2,
+        "tokens_entrada_medios": 9438,
+        "tokens_salida_medios": 274,
+        "latencia_media_s": 4.2,
+        "latencia_mediana_s": 4.0
+      }
+    }
+  },
   "modos_de_fallo": {
     "bucle": 10
   },
@@ -154,5 +228,12 @@
     "coherencia_plan": 3.4,
     "recuperacion_errores": 3.38,
     "exploracion_eficiente": 3.3
+  },
+  "rubrica_por_condicion": {
+    "baseline": {
+      "coherencia_plan": 3.4,
+      "recuperacion_errores": 3.38,
+      "exploracion_eficiente": 3.3
+    }
   }
 }

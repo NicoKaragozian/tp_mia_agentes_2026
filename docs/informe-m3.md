@@ -798,7 +798,9 @@ python eval/run.py --experimento e1-memoria     # y análogo para e2 … e6
 Las figuras de este informe se regeneran con `python eval/figuras.py`, que las
 construye en SVG desde los resúmenes versionados sin ninguna dependencia de
 graficación y sin llamar al modelo: reproducirlas no requiere credenciales ni
-proveedor.
+proveedor. El script no lee las trazas crudas en ningún camino, cosa que un test
+verifica explícitamente, porque de lo contrario la promesa de reproducibilidad
+solo se cumpliría en la máquina donde se corrió la evaluación original.
 
 Las trazas crudas de cada corrida quedan en `eval/results/`, y los resúmenes
 agregados de cada campaña están versionados en el repositorio

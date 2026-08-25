@@ -100,7 +100,9 @@ def barras_horizontales(
             f'fill="{TINTA}" text-anchor="end">{_esc(etq)}</text>'
         )
         partes.append(
-            f'<rect x="{x0}" y="{y:.1f}" width="{max(largo, 1):.1f}" '
+            # Sin ancho mínimo: un 0 debe verse como 0, no como una barra
+            # de un pixel que sugiere un valor positivo.
+            f'<rect x="{x0}" y="{y:.1f}" width="{largo:.1f}" '
             f'height="{grosor:.1f}" fill="{color}" rx="2"/>'
         )
         partes.append(
@@ -149,7 +151,7 @@ def series_agrupadas(
             x = base + grosor * s
             partes.append(
                 f'<rect x="{x:.1f}" y="{y0 + alto_util - alto:.1f}" '
-                f'width="{grosor - 4:.1f}" height="{max(alto, 1):.1f}" '
+                f'width="{grosor - 4:.1f}" height="{alto:.1f}" '
                 f'fill="{COLORES[s % len(COLORES)]}" rx="2"/>'
             )
             partes.append(
@@ -183,25 +185,35 @@ def _resumen(nombre: str) -> dict:
     return json.loads((RESULTADOS / nombre / "summary.json").read_text(encoding="utf-8"))
 
 
-def _pooled_por_escenario(directorios: Sequence[str], condicion: str = "baseline") -> dict:
-    """Agrega por escenario sumando varias campañas de la misma condición."""
+def _pooled_por_escenario(
+    directorios: Sequence[str], condicion: str = "baseline"
+) -> dict[str, list[int]]:
+    """Suma éxitos y corridas por escenario, SOLO de la condición indicada.
+
+    Lee `por_condicion_escenario` del resumen, no `por_escenario`: este último
+    agrega todas las condiciones del experimento, así que usarlo mezclaría el
+    baseline con la rama experimental de e5 o e6 e inflaría tanto el
+    denominador como la tasa.
+
+    No hay lectura de trazas en ningún camino. Todo sale de los resúmenes
+    versionados, que es lo que hace que las figuras se regeneren desde un clon
+    limpio.
+    """
     from collections import defaultdict
 
     acc: dict[str, list[int]] = defaultdict(lambda: [0, 0])
     for d in directorios:
-        ruta = RESULTADOS / d / "trazas.json"
-        if not ruta.is_file():  # las trazas no se versionan; caemos al summary
-            s = _resumen(d)
-            for esc, v in s["por_escenario"].items():
-                acc[esc][0] += v["exitos"]
-                acc[esc][1] += v["n"]
-            continue
-        for t in json.loads(ruta.read_text(encoding="utf-8")):
-            if t.get("fallo_infra") or t["condicion"] != condicion:
-                continue
-            acc[t["escenario"]][0] += int(bool(t["meta_lograda"]))
-            acc[t["escenario"]][1] += 1
+        cruce = _resumen(d).get("por_condicion_escenario", {})
+        if condicion not in cruce:
+            raise KeyError(
+                f"la campaña {d!r} no tiene la condición {condicion!r}; "
+                f"disponibles: {sorted(cruce) or '(ninguna)'}"
+            )
+        for esc, v in cruce[condicion].items():
+            acc[esc][0] += v["exitos"]
+            acc[esc][1] += v["n"]
     return dict(acc)
+
 
 
 # ---------------------------------------------------------------------------
@@ -293,50 +305,56 @@ def fig_e1_memoria() -> None:
 
 def fig_juez() -> None:
     """¿El juez distingue una corrida buena de una mala? (sección 3.6)"""
-    # La rúbrica por condición se recalcula desde las trazas cuando están
-    # disponibles; el resumen versionado solo guarda la media global.
-    from collections import defaultdict
-    import statistics
-
-    ruta = RESULTADOS / "e1-nova" / "trazas.json"
-    dims = ("coherencia_plan", "recuperacion_errores", "exploracion_eficiente")
-    if ruta.is_file():
-        por = defaultdict(list)
-        for t in json.loads(ruta.read_text(encoding="utf-8")):
-            j = t.get("juez")
-            if isinstance(j, dict) and "error_juez" not in j:
-                por[t["condicion"]].append(j)
-        claves = ["baseline", "memoria_ajustada", "memoria_minima"]
-        series = [
-            (
-                d.replace("_", " "),
-                [round(statistics.fmean(x[d] for x in por[k]), 2) for k in claves],
-            )
-            for d in dims
-        ]
-        series_agrupadas(
-            DESTINO / "juez-por-condicion.svg",
-            "E1 · rúbrica del juez por condición",
-            "escala 1 a 5 · las tres dimensiones caen junto con la tasa de éxito",
-            ["ventana 50", "ventana 8", "ventana 4"],
-            series,
-            maximo=5.0,
-            unidad="",
+    rubrica = _resumen("e1-nova").get("rubrica_por_condicion", {})
+    claves = ["baseline", "memoria_ajustada", "memoria_minima"]
+    faltantes = [k for k in claves if k not in rubrica]
+    if faltantes:
+        raise KeyError(
+            f"faltan veredictos del juez para {faltantes}; corré la evaluación "
+            f"con --juez para poder generar esta figura"
         )
+    dims = ("coherencia_plan", "recuperacion_errores", "exploracion_eficiente")
+    series_agrupadas(
+        DESTINO / "juez-por-condicion.svg",
+        "E1 · rúbrica del juez por condición",
+        "escala 1 a 5 · las tres dimensiones caen junto con la tasa de éxito",
+        ["ventana 50", "ventana 8", "ventana 4"],
+        [(d.replace("_", " "), [rubrica[k][d] for k in claves]) for d in dims],
+        maximo=5.0,
+        unidad="",
+    )
 
 
 def main() -> int:
     DESTINO.mkdir(parents=True, exist_ok=True)
-    for fn in (fig_exito_por_escenario, fig_eficiencia, fig_e1_memoria, fig_juez):
+    figuras = (fig_exito_por_escenario, fig_eficiencia, fig_e1_memoria, fig_juez)
+    fallidas: list[str] = []
+    for fn in figuras:
+        antes = {p.name for p in DESTINO.glob("*.svg")}
         try:
             fn()
-            print(f"  ok  {fn.__name__}")
         except (FileNotFoundError, KeyError) as exc:
-            print(f"  --  {fn.__name__} omitida ({type(exc).__name__}: {exc})")
+            fallidas.append(f"{fn.__name__}: {type(exc).__name__}: {exc}")
+            print(f"  FALLÓ  {fn.__name__}")
+            continue
+        # Verificar que efectivamente se escribió algo: una función que no
+        # lanza pero tampoco produce SVG dejaría el informe con una imagen
+        # rota sin que nada lo avise.
+        if {p.name for p in DESTINO.glob("*.svg")} == antes and not antes:
+            fallidas.append(f"{fn.__name__}: no produjo ningún SVG")
+            print(f"  FALLÓ  {fn.__name__} (sin salida)")
+            continue
+        print(f"  ok     {fn.__name__}")
+
     generadas = sorted(p.name for p in DESTINO.glob("*.svg"))
     print(f"\n{len(generadas)} figuras en {DESTINO.relative_to(RAIZ)}:")
     for g in generadas:
         print(f"  {g}")
+    if fallidas:
+        print("\nFiguras no generadas:")
+        for f in fallidas:
+            print(f"  {f}")
+        return 1
     return 0
 
 

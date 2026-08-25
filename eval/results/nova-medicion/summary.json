@@ -147,8 +147,83 @@
       "latencia_mediana_s": 3.9
     }
   },
+  "por_condicion_escenario": {
+    "baseline": {
+      "apartment-keys": {
+        "n": 5,
+        "descartadas": 0,
+        "exitos": 3,
+        "tasa_exito": 0.6,
+        "eficiencia_media": 0.562,
+        "pasos_medios": 27.6,
+        "repeticion_media": 0.544,
+        "llamadas_llm_medias": 28.2,
+        "tokens_entrada_medios": 111542,
+        "tokens_salida_medios": 1613,
+        "latencia_media_s": 26.9,
+        "latencia_mediana_s": 12.7
+      },
+      "color-locks": {
+        "n": 5,
+        "descartadas": 0,
+        "exitos": 4,
+        "tasa_exito": 0.8,
+        "eficiencia_media": 0.584,
+        "pasos_medios": 25.4,
+        "repeticion_media": 0.343,
+        "llamadas_llm_medias": 26.2,
+        "tokens_entrada_medios": 93495,
+        "tokens_salida_medios": 1444,
+        "latencia_media_s": 24.1,
+        "latencia_mediana_s": 18.1
+      },
+      "library-search": {
+        "n": 5,
+        "descartadas": 0,
+        "exitos": 3,
+        "tasa_exito": 0.6,
+        "eficiencia_media": 0.346,
+        "pasos_medios": 33.4,
+        "repeticion_media": 0.251,
+        "llamadas_llm_medias": 34.0,
+        "tokens_entrada_medios": 199064,
+        "tokens_salida_medios": 2480,
+        "latencia_media_s": 37.3,
+        "latencia_mediana_s": 36.0
+      },
+      "office-sequence": {
+        "n": 5,
+        "descartadas": 0,
+        "exitos": 4,
+        "tasa_exito": 0.8,
+        "eficiencia_media": 0.366,
+        "pasos_medios": 43.8,
+        "repeticion_media": 0.678,
+        "llamadas_llm_medias": 44.0,
+        "tokens_entrada_medios": 165086,
+        "tokens_salida_medios": 2189,
+        "latencia_media_s": 40.6,
+        "latencia_mediana_s": 44.3
+      },
+      "study-with-key": {
+        "n": 5,
+        "descartadas": 0,
+        "exitos": 5,
+        "tasa_exito": 1.0,
+        "eficiencia_media": 0.72,
+        "pasos_medios": 4.2,
+        "repeticion_media": 0.0,
+        "llamadas_llm_medias": 5.2,
+        "tokens_entrada_medios": 9963,
+        "tokens_salida_medios": 288,
+        "latencia_media_s": 4.0,
+        "latencia_mediana_s": 3.9
+      }
+    }
+  },
   "modos_de_fallo": {
     "bucle": 6
   },
-  "rubrica_media": {}
+  "rubrica_media": {},
+  "rubrica_por_condicion": {}
 }
