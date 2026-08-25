@@ -124,6 +124,7 @@ def main(argv: list[str] | None = None) -> int:
 
     trazas = []
     hecho = 0
+    fallos_seguidos = 0
     for condicion in condiciones:
         for escenario in escenarios:
             for rep in range(repeticiones):
@@ -135,6 +136,19 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 traza = ejecutar_caso(escenario, condicion, rep, modelo)
                 trazas.append(traza)
+                # Un fallo de infraestructura aislado se tolera; varios
+                # seguidos casi siempre significan que el problema es global
+                # (credenciales vencidas, proveedor caído) y seguir solo gasta
+                # tiempo produciendo trazas inservibles.
+                fallos_seguidos = fallos_seguidos + 1 if traza.fallo_infra else 0
+                if fallos_seguidos >= 3:
+                    print(
+                        f"\nAbortado: {fallos_seguidos} fallos de infraestructura "
+                        f"seguidos. Suele ser la sesión del proveedor vencida "
+                        f"(`aws sso login`). Último error:\n"
+                        f"{(traza.fallo_infra or '').strip().splitlines()[-1]}"
+                    )
+                    raise SystemExit(2)
                 marca_meta = "OK " if traza.meta_lograda else "fail"
                 extra = " (infra)" if traza.fallo_infra else ""
                 print(
