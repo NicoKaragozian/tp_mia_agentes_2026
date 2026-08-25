@@ -47,3 +47,11 @@ Modelo: `bedrock:amazon.nova-lite-v1:0` · corridas: 100
 |---|---|
 | bucle | 28 |
 | accion_invalida | 2 |
+
+## Rúbrica cualitativa (LLM-as-judge, 1–5)
+
+| dimensión | media |
+|---|---|
+| coherencia_plan | 3.18 |
+| recuperacion_errores | 3.14 |
+| exploracion_eficiente | 3.04 |
