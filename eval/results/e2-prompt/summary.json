@@ -1,0 +1,197 @@
+{
+  "n_corridas": 32,
+  "modelo": "ollama:llama3.1:8b",
+  "global": {
+    "n": 32,
+    "exitos": 4,
+    "tasa_exito": 0.125,
+    "eficiencia_media": 0.427,
+    "pasos_medios": 19.4,
+    "repeticion_media": 0.337,
+    "llamadas_llm_medias": 16.1,
+    "tokens_entrada_medios": 22966,
+    "tokens_salida_medios": 5549,
+    "latencia_media_s": 218.2
+  },
+  "por_condicion": {
+    "baseline": {
+      "n": 16,
+      "exitos": 4,
+      "tasa_exito": 0.25,
+      "eficiencia_media": 0.427,
+      "pasos_medios": 16.5,
+      "repeticion_media": 0.231,
+      "llamadas_llm_medias": 16.8,
+      "tokens_entrada_medios": 29320,
+      "tokens_salida_medios": 355,
+      "latencia_media_s": 24.4
+    },
+    "prompt_generico": {
+      "n": 16,
+      "exitos": 0,
+      "tasa_exito": 0.0,
+      "eficiencia_media": 0.0,
+      "pasos_medios": 22.3,
+      "repeticion_media": 0.443,
+      "llamadas_llm_medias": 15.4,
+      "tokens_entrada_medios": 16613,
+      "tokens_salida_medios": 10744,
+      "latencia_media_s": 412.1
+    }
+  },
+  "por_dificultad": {
+    "easy": {
+      "n": 4,
+      "exitos": 2,
+      "tasa_exito": 0.5,
+      "eficiencia_media": 0.375,
+      "pasos_medios": 11.8,
+      "repeticion_media": 0.343,
+      "llamadas_llm_medias": 11.5,
+      "tokens_entrada_medios": 7919,
+      "tokens_salida_medios": 246,
+      "latencia_media_s": 9.8
+    },
+    "extreme": {
+      "n": 12,
+      "exitos": 0,
+      "tasa_exito": 0.0,
+      "eficiencia_media": 0.0,
+      "pasos_medios": 21.9,
+      "repeticion_media": 0.383,
+      "llamadas_llm_medias": 19.6,
+      "tokens_entrada_medios": 31258,
+      "tokens_salida_medios": 481,
+      "latencia_media_s": 35.1
+    },
+    "hard": {
+      "n": 8,
+      "exitos": 0,
+      "tasa_exito": 0.0,
+      "eficiencia_media": 0.0,
+      "pasos_medios": 20.6,
+      "repeticion_media": 0.236,
+      "llamadas_llm_medias": 13.1,
+      "tokens_entrada_medios": 19088,
+      "tokens_salida_medios": 20891,
+      "latencia_media_s": 796.4
+    },
+    "medium": {
+      "n": 8,
+      "exitos": 2,
+      "tasa_exito": 0.25,
+      "eficiencia_media": 0.478,
+      "pasos_medios": 18.2,
+      "repeticion_media": 0.366,
+      "llamadas_llm_medias": 16.0,
+      "tokens_entrada_medios": 21931,
+      "tokens_salida_medios": 462,
+      "latencia_media_s": 18.9
+    }
+  },
+  "por_escenario": {
+    "apartment-keys": {
+      "n": 4,
+      "exitos": 0,
+      "tasa_exito": 0.0,
+      "eficiencia_media": 0.0,
+      "pasos_medios": 16.0,
+      "repeticion_media": 0.482,
+      "llamadas_llm_medias": 12.0,
+      "tokens_entrada_medios": 17357,
+      "tokens_salida_medios": 494,
+      "latencia_media_s": 18.4
+    },
+    "backtracking-vault": {
+      "n": 4,
+      "exitos": 0,
+      "tasa_exito": 0.0,
+      "eficiencia_media": 0.0,
+      "pasos_medios": 9.8,
+      "repeticion_media": 0.161,
+      "llamadas_llm_medias": 2.0,
+      "tokens_entrada_medios": 1825,
+      "tokens_salida_medios": 404,
+      "latencia_media_s": 15.4
+    },
+    "color-locks": {
+      "n": 4,
+      "exitos": 2,
+      "tasa_exito": 0.5,
+      "eficiencia_media": 0.478,
+      "pasos_medios": 20.5,
+      "repeticion_media": 0.249,
+      "llamadas_llm_medias": 20.0,
+      "tokens_entrada_medios": 26505,
+      "tokens_salida_medios": 430,
+      "latencia_media_s": 19.5
+    },
+    "extreme-archive": {
+      "n": 4,
+      "exitos": 0,
+      "tasa_exito": 0.0,
+      "eficiencia_media": 0.0,
+      "pasos_medios": 6.0,
+      "repeticion_media": 0.188,
+      "llamadas_llm_medias": 6.8,
+      "tokens_entrada_medios": 3653,
+      "tokens_salida_medios": 145,
+      "latencia_media_s": 5.6
+    },
+    "library-search": {
+      "n": 4,
+      "exitos": 0,
+      "tasa_exito": 0.0,
+      "eficiencia_media": 0.0,
+      "pasos_medios": 15.8,
+      "repeticion_media": 0.24,
+      "llamadas_llm_medias": 16.2,
+      "tokens_entrada_medios": 25877,
+      "tokens_salida_medios": 41321,
+      "latencia_media_s": 1565.2
+    },
+    "office-sequence": {
+      "n": 4,
+      "exitos": 0,
+      "tasa_exito": 0.0,
+      "eficiencia_media": 0.0,
+      "pasos_medios": 25.5,
+      "repeticion_media": 0.231,
+      "llamadas_llm_medias": 10.0,
+      "tokens_entrada_medios": 12299,
+      "tokens_salida_medios": 461,
+      "latencia_media_s": 27.6
+    },
+    "study-with-key": {
+      "n": 4,
+      "exitos": 2,
+      "tasa_exito": 0.5,
+      "eficiencia_media": 0.375,
+      "pasos_medios": 11.8,
+      "repeticion_media": 0.343,
+      "llamadas_llm_medias": 11.5,
+      "tokens_entrada_medios": 7919,
+      "tokens_salida_medios": 246,
+      "latencia_media_s": 9.8
+    },
+    "vault-combination": {
+      "n": 4,
+      "exitos": 0,
+      "tasa_exito": 0.0,
+      "eficiencia_media": 0.0,
+      "pasos_medios": 50.0,
+      "repeticion_media": 0.8,
+      "llamadas_llm_medias": 50.0,
+      "tokens_entrada_medios": 88296,
+      "tokens_salida_medios": 895,
+      "latencia_media_s": 84.2
+    }
+  },
+  "modos_de_fallo": {
+    "bucle": 13,
+    "accion_invalida": 9,
+    "tool_call_en_texto": 4,
+    "parada_prematura": 2
+  },
+  "rubrica_media": {}
+}

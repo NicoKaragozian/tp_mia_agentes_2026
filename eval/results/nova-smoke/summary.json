@@ -1,0 +1,68 @@
+{
+  "n_corridas": 1,
+  "modelo": "bedrock:amazon.nova-lite-v1:0",
+  "global": {
+    "n": 1,
+    "descartadas": 0,
+    "exitos": 1,
+    "tasa_exito": 1.0,
+    "eficiencia_media": 0.6,
+    "pasos_medios": 5.0,
+    "repeticion_media": 0.0,
+    "llamadas_llm_medias": 6.0,
+    "tokens_entrada_medios": 9129,
+    "tokens_salida_medios": 327,
+    "latencia_media_s": 4.8,
+    "latencia_mediana_s": 4.8
+  },
+  "por_condicion": {
+    "baseline": {
+      "n": 1,
+      "descartadas": 0,
+      "exitos": 1,
+      "tasa_exito": 1.0,
+      "eficiencia_media": 0.6,
+      "pasos_medios": 5.0,
+      "repeticion_media": 0.0,
+      "llamadas_llm_medias": 6.0,
+      "tokens_entrada_medios": 9129,
+      "tokens_salida_medios": 327,
+      "latencia_media_s": 4.8,
+      "latencia_mediana_s": 4.8
+    }
+  },
+  "por_dificultad": {
+    "easy": {
+      "n": 1,
+      "descartadas": 0,
+      "exitos": 1,
+      "tasa_exito": 1.0,
+      "eficiencia_media": 0.6,
+      "pasos_medios": 5.0,
+      "repeticion_media": 0.0,
+      "llamadas_llm_medias": 6.0,
+      "tokens_entrada_medios": 9129,
+      "tokens_salida_medios": 327,
+      "latencia_media_s": 4.8,
+      "latencia_mediana_s": 4.8
+    }
+  },
+  "por_escenario": {
+    "study-with-key": {
+      "n": 1,
+      "descartadas": 0,
+      "exitos": 1,
+      "tasa_exito": 1.0,
+      "eficiencia_media": 0.6,
+      "pasos_medios": 5.0,
+      "repeticion_media": 0.0,
+      "llamadas_llm_medias": 6.0,
+      "tokens_entrada_medios": 9129,
+      "tokens_salida_medios": 327,
+      "latencia_media_s": 4.8,
+      "latencia_mediana_s": 4.8
+    }
+  },
+  "modos_de_fallo": {},
+  "rubrica_media": {}
+}

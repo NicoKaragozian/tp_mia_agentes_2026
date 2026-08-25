@@ -1,0 +1,169 @@
+{
+  "n_corridas": 50,
+  "modelo": "bedrock:amazon.nova-lite-v1:0",
+  "global": {
+    "n": 24,
+    "descartadas": 26,
+    "exitos": 22,
+    "tasa_exito": 0.917,
+    "eficiencia_media": 0.52,
+    "pasos_medios": 21.1,
+    "repeticion_media": 0.292,
+    "llamadas_llm_medias": 21.3,
+    "tokens_entrada_medios": 72155,
+    "tokens_salida_medios": 1152,
+    "latencia_media_s": 18.1,
+    "latencia_mediana_s": 13.5
+  },
+  "por_condicion": {
+    "baseline": {
+      "n": 0,
+      "descartadas": 25,
+      "exitos": 0,
+      "tasa_exito": 0.0,
+      "eficiencia_media": 0.0,
+      "pasos_medios": 0.0,
+      "repeticion_media": 0.0,
+      "llamadas_llm_medias": 0.0,
+      "tokens_entrada_medios": 0,
+      "tokens_salida_medios": 0,
+      "latencia_media_s": 0.0,
+      "latencia_mediana_s": 0.0
+    },
+    "sin_memoria_acciones": {
+      "n": 24,
+      "descartadas": 1,
+      "exitos": 22,
+      "tasa_exito": 0.917,
+      "eficiencia_media": 0.52,
+      "pasos_medios": 21.1,
+      "repeticion_media": 0.292,
+      "llamadas_llm_medias": 21.3,
+      "tokens_entrada_medios": 72155,
+      "tokens_salida_medios": 1152,
+      "latencia_media_s": 18.1,
+      "latencia_mediana_s": 13.5
+    }
+  },
+  "por_dificultad": {
+    "easy": {
+      "n": 5,
+      "descartadas": 5,
+      "exitos": 5,
+      "tasa_exito": 1.0,
+      "eficiencia_media": 0.75,
+      "pasos_medios": 4.0,
+      "repeticion_media": 0.0,
+      "llamadas_llm_medias": 4.8,
+      "tokens_entrada_medios": 8644,
+      "tokens_salida_medios": 282,
+      "latencia_media_s": 3.8,
+      "latencia_mediana_s": 3.8
+    },
+    "hard": {
+      "n": 9,
+      "descartadas": 11,
+      "exitos": 8,
+      "tasa_exito": 0.889,
+      "eficiencia_media": 0.381,
+      "pasos_medios": 31.1,
+      "repeticion_media": 0.344,
+      "llamadas_llm_medias": 30.2,
+      "tokens_entrada_medios": 115323,
+      "tokens_salida_medios": 1666,
+      "latencia_media_s": 26.7,
+      "latencia_mediana_s": 17.7
+    },
+    "medium": {
+      "n": 10,
+      "descartadas": 10,
+      "exitos": 9,
+      "tasa_exito": 0.9,
+      "eficiencia_media": 0.515,
+      "pasos_medios": 20.6,
+      "repeticion_media": 0.392,
+      "llamadas_llm_medias": 21.5,
+      "tokens_entrada_medios": 65059,
+      "tokens_salida_medios": 1125,
+      "latencia_media_s": 17.4,
+      "latencia_mediana_s": 14.5
+    }
+  },
+  "por_escenario": {
+    "apartment-keys": {
+      "n": 5,
+      "descartadas": 5,
+      "exitos": 5,
+      "tasa_exito": 1.0,
+      "eficiencia_media": 0.492,
+      "pasos_medios": 14.6,
+      "repeticion_media": 0.414,
+      "llamadas_llm_medias": 15.6,
+      "tokens_entrada_medios": 38235,
+      "tokens_salida_medios": 739,
+      "latencia_media_s": 11.5,
+      "latencia_mediana_s": 10.4
+    },
+    "color-locks": {
+      "n": 5,
+      "descartadas": 5,
+      "exitos": 4,
+      "tasa_exito": 0.8,
+      "eficiencia_media": 0.543,
+      "pasos_medios": 26.6,
+      "repeticion_media": 0.369,
+      "llamadas_llm_medias": 27.4,
+      "tokens_entrada_medios": 91883,
+      "tokens_salida_medios": 1510,
+      "latencia_media_s": 23.3,
+      "latencia_mediana_s": 17.8
+    },
+    "library-search": {
+      "n": 5,
+      "descartadas": 5,
+      "exitos": 5,
+      "tasa_exito": 1.0,
+      "eficiencia_media": 0.376,
+      "pasos_medios": 22.0,
+      "repeticion_media": 0.094,
+      "llamadas_llm_medias": 20.2,
+      "tokens_entrada_medios": 89232,
+      "tokens_salida_medios": 1355,
+      "latencia_media_s": 18.9,
+      "latencia_mediana_s": 13.4
+    },
+    "office-sequence": {
+      "n": 4,
+      "descartadas": 6,
+      "exitos": 3,
+      "tasa_exito": 0.75,
+      "eficiencia_media": 0.39,
+      "pasos_medios": 42.5,
+      "repeticion_media": 0.657,
+      "llamadas_llm_medias": 42.8,
+      "tokens_entrada_medios": 147937,
+      "tokens_salida_medios": 2054,
+      "latencia_media_s": 36.5,
+      "latencia_mediana_s": 41.9
+    },
+    "study-with-key": {
+      "n": 5,
+      "descartadas": 5,
+      "exitos": 5,
+      "tasa_exito": 1.0,
+      "eficiencia_media": 0.75,
+      "pasos_medios": 4.0,
+      "repeticion_media": 0.0,
+      "llamadas_llm_medias": 4.8,
+      "tokens_entrada_medios": 8644,
+      "tokens_salida_medios": 282,
+      "latencia_media_s": 3.8,
+      "latencia_mediana_s": 3.8
+    }
+  },
+  "modos_de_fallo": {
+    "fallo_infraestructura": 26,
+    "bucle": 2
+  },
+  "rubrica_media": {}
+}

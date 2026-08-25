@@ -1,0 +1,98 @@
+{
+  "n_corridas": 4,
+  "modelo": "bedrock:amazon.nova-lite-v1:0",
+  "global": {
+    "n": 4,
+    "descartadas": 0,
+    "exitos": 2,
+    "tasa_exito": 0.5,
+    "eficiencia_media": 0.287,
+    "pasos_medios": 40.5,
+    "repeticion_media": 0.594,
+    "llamadas_llm_medias": 41.0,
+    "tokens_entrada_medios": 187475,
+    "tokens_salida_medios": 2411,
+    "latencia_media_s": 38.7,
+    "latencia_mediana_s": 39.4
+  },
+  "por_condicion": {
+    "baseline": {
+      "n": 4,
+      "descartadas": 0,
+      "exitos": 2,
+      "tasa_exito": 0.5,
+      "eficiencia_media": 0.287,
+      "pasos_medios": 40.5,
+      "repeticion_media": 0.594,
+      "llamadas_llm_medias": 41.0,
+      "tokens_entrada_medios": 187475,
+      "tokens_salida_medios": 2411,
+      "latencia_media_s": 38.7,
+      "latencia_mediana_s": 39.4
+    }
+  },
+  "por_dificultad": {
+    "hard": {
+      "n": 2,
+      "descartadas": 0,
+      "exitos": 1,
+      "tasa_exito": 0.5,
+      "eficiencia_media": 0.241,
+      "pasos_medios": 39.5,
+      "repeticion_media": 0.637,
+      "llamadas_llm_medias": 40.0,
+      "tokens_entrada_medios": 224287,
+      "tokens_salida_medios": 2550,
+      "latencia_media_s": 38.0,
+      "latencia_mediana_s": 38.0
+    },
+    "medium": {
+      "n": 2,
+      "descartadas": 0,
+      "exitos": 1,
+      "tasa_exito": 0.5,
+      "eficiencia_media": 0.333,
+      "pasos_medios": 41.5,
+      "repeticion_media": 0.552,
+      "llamadas_llm_medias": 42.0,
+      "tokens_entrada_medios": 150664,
+      "tokens_salida_medios": 2272,
+      "latencia_media_s": 39.4,
+      "latencia_mediana_s": 39.4
+    }
+  },
+  "por_escenario": {
+    "color-locks": {
+      "n": 2,
+      "descartadas": 0,
+      "exitos": 1,
+      "tasa_exito": 0.5,
+      "eficiencia_media": 0.333,
+      "pasos_medios": 41.5,
+      "repeticion_media": 0.552,
+      "llamadas_llm_medias": 42.0,
+      "tokens_entrada_medios": 150664,
+      "tokens_salida_medios": 2272,
+      "latencia_media_s": 39.4,
+      "latencia_mediana_s": 39.4
+    },
+    "library-search": {
+      "n": 2,
+      "descartadas": 0,
+      "exitos": 1,
+      "tasa_exito": 0.5,
+      "eficiencia_media": 0.241,
+      "pasos_medios": 39.5,
+      "repeticion_media": 0.637,
+      "llamadas_llm_medias": 40.0,
+      "tokens_entrada_medios": 224287,
+      "tokens_salida_medios": 2550,
+      "latencia_media_s": 38.0,
+      "latencia_mediana_s": 38.0
+    }
+  },
+  "modos_de_fallo": {
+    "bucle": 2
+  },
+  "rubrica_media": {}
+}
