@@ -179,5 +179,9 @@
     "bucle": 68,
     "accion_invalida": 1
   },
-  "rubrica_media": {}
+  "rubrica_media": {
+    "coherencia_plan": 2.67,
+    "recuperacion_errores": 2.58,
+    "exploracion_eficiente": 2.62
+  }
 }

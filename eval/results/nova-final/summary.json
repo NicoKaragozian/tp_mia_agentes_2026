@@ -150,5 +150,9 @@
   "modos_de_fallo": {
     "bucle": 10
   },
-  "rubrica_media": {}
+  "rubrica_media": {
+    "coherencia_plan": 3.4,
+    "recuperacion_errores": 3.38,
+    "exploracion_eficiente": 3.3
+  }
 }
