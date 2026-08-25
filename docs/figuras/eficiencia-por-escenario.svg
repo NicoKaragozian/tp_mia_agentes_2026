@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 380" width="720" height="380" font-family="Helvetica, Arial, sans-serif">
+<rect width="720" height="380" fill="#ffffff"/>
+<text x="40" y="26" font-size="15" font-weight="600" fill="#1b2432">Eficiencia sobre corridas exitosas</text>
+<text x="40" y="42" font-size="11" fill="#8894a6">óptimo dividido llamadas usadas · 1,00 sería el camino ideal</text>
+<line x1="190.0" y1="46" x2="190.0" y2="328.0" stroke="#d8dee6" stroke-width="1"/>
+<text x="190.0" y="362.0" font-size="10" fill="#8894a6" text-anchor="middle">0</text>
+<line x1="300.5" y1="46" x2="300.5" y2="328.0" stroke="#d8dee6" stroke-width="1"/>
+<text x="300.5" y="362.0" font-size="10" fill="#8894a6" text-anchor="middle">0.25</text>
+<line x1="411.0" y1="46" x2="411.0" y2="328.0" stroke="#d8dee6" stroke-width="1"/>
+<text x="411.0" y="362.0" font-size="10" fill="#8894a6" text-anchor="middle">0.5</text>
+<line x1="521.5" y1="46" x2="521.5" y2="328.0" stroke="#d8dee6" stroke-width="1"/>
+<text x="521.5" y="362.0" font-size="10" fill="#8894a6" text-anchor="middle">0.75</text>
+<line x1="632.0" y1="46" x2="632.0" y2="328.0" stroke="#d8dee6" stroke-width="1"/>
+<text x="632.0" y="362.0" font-size="10" fill="#8894a6" text-anchor="middle">1</text>
+<text x="180" y="78.2" font-size="11.5" fill="#1b2432" text-anchor="end">study-with-key</text>
+<rect x="190" y="59.2" width="318.2" height="30.0" fill="#2b4c7e" rx="2"/>
+<text x="516.2" y="78.2" font-size="11" fill="#1b2432">0.72</text>
+<text x="180" y="134.6" font-size="11.5" fill="#1b2432" text-anchor="end">color-locks</text>
+<rect x="190" y="115.6" width="195.4" height="30.0" fill="#a6392f" rx="2"/>
+<text x="393.4" y="134.6" font-size="11" fill="#1b2432">0.44</text>
+<text x="180" y="191.0" font-size="11.5" fill="#1b2432" text-anchor="end">apartment-keys</text>
+<rect x="190" y="172.0" width="219.2" height="30.0" fill="#2c6a4f" rx="2"/>
+<text x="417.2" y="191.0" font-size="11" fill="#1b2432">0.50</text>
+<text x="180" y="247.4" font-size="11.5" fill="#1b2432" text-anchor="end">library-search</text>
+<rect x="190" y="228.4" width="182.5" height="30.0" fill="#8a6d1f" rx="2"/>
+<text x="380.5" y="247.4" font-size="11" fill="#1b2432">0.41</text>
+<text x="180" y="303.8" font-size="11.5" fill="#1b2432" text-anchor="end">office-sequence</text>
+<rect x="190" y="284.8" width="137.0" height="30.0" fill="#2b4c7e" rx="2"/>
+<text x="335.0" y="303.8" font-size="11" fill="#1b2432">0.31</text>
+</svg>

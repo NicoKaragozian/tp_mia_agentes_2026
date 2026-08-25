@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 380" width="720" height="380" font-family="Helvetica, Arial, sans-serif">
+<rect width="720" height="380" fill="#ffffff"/>
+<text x="40" y="26" font-size="15" font-weight="600" fill="#1b2432">Tasa de éxito por escenario</text>
+<text x="40" y="42" font-size="11" fill="#8894a6">Nova Lite · 180 corridas · global 72 %</text>
+<line x1="190.0" y1="46" x2="190.0" y2="328.0" stroke="#d8dee6" stroke-width="1"/>
+<text x="190.0" y="362.0" font-size="10" fill="#8894a6" text-anchor="middle">0%</text>
+<line x1="300.5" y1="46" x2="300.5" y2="328.0" stroke="#d8dee6" stroke-width="1"/>
+<text x="300.5" y="362.0" font-size="10" fill="#8894a6" text-anchor="middle">25%</text>
+<line x1="411.0" y1="46" x2="411.0" y2="328.0" stroke="#d8dee6" stroke-width="1"/>
+<text x="411.0" y="362.0" font-size="10" fill="#8894a6" text-anchor="middle">50%</text>
+<line x1="521.5" y1="46" x2="521.5" y2="328.0" stroke="#d8dee6" stroke-width="1"/>
+<text x="521.5" y="362.0" font-size="10" fill="#8894a6" text-anchor="middle">75%</text>
+<line x1="632.0" y1="46" x2="632.0" y2="328.0" stroke="#d8dee6" stroke-width="1"/>
+<text x="632.0" y="362.0" font-size="10" fill="#8894a6" text-anchor="middle">100%</text>
+<text x="180" y="67.6" font-size="11.5" fill="#1b2432" text-anchor="end">study-with-key  (easy)</text>
+<rect x="190" y="52.7" width="427.3" height="21.9" fill="#2b4c7e" rx="2"/>
+<text x="625.3" y="67.6" font-size="11" fill="#1b2432">29/30</text>
+<text x="180" y="102.9" font-size="11.5" fill="#1b2432" text-anchor="end">color-locks  (medium)</text>
+<rect x="190" y="87.9" width="294.7" height="21.9" fill="#a6392f" rx="2"/>
+<text x="492.7" y="102.9" font-size="11" fill="#1b2432">20/30</text>
+<text x="180" y="138.1" font-size="11.5" fill="#1b2432" text-anchor="end">apartment-keys  (medium)</text>
+<rect x="190" y="123.2" width="353.6" height="21.9" fill="#2c6a4f" rx="2"/>
+<text x="551.6" y="138.1" font-size="11" fill="#1b2432">24/30</text>
+<text x="180" y="173.4" font-size="11.5" fill="#1b2432" text-anchor="end">library-search  (hard)</text>
+<rect x="190" y="158.4" width="309.4" height="21.9" fill="#8a6d1f" rx="2"/>
+<text x="507.4" y="173.4" font-size="11" fill="#1b2432">21/30</text>
+<text x="180" y="208.6" font-size="11.5" fill="#1b2432" text-anchor="end">office-sequence  (hard)</text>
+<rect x="190" y="193.7" width="353.6" height="21.9" fill="#2b4c7e" rx="2"/>
+<text x="551.6" y="208.6" font-size="11" fill="#1b2432">24/30</text>
+<text x="180" y="243.9" font-size="11.5" fill="#1b2432" text-anchor="end">extreme-archive  (extreme)</text>
+<rect x="190" y="228.9" width="397.8" height="21.9" fill="#a6392f" rx="2"/>
+<text x="595.8" y="243.9" font-size="11" fill="#1b2432">9/10</text>
+<text x="180" y="279.1" font-size="11.5" fill="#1b2432" text-anchor="end">vault-combination  (extreme)</text>
+<rect x="190" y="264.2" width="44.2" height="21.9" fill="#2c6a4f" rx="2"/>
+<text x="242.2" y="279.1" font-size="11" fill="#1b2432">1/10</text>
+<text x="180" y="314.4" font-size="11.5" fill="#1b2432" text-anchor="end">backtracking-vault  (extreme)</text>
+<rect x="190" y="299.4" width="88.4" height="21.9" fill="#8a6d1f" rx="2"/>
+<text x="286.4" y="314.4" font-size="11" fill="#1b2432">2/10</text>
+</svg>

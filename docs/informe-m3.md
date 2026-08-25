@@ -361,8 +361,8 @@ repeticiones independientes.
 | :---- | :---- |
 | **Modelo evaluado** | `amazon.nova-lite-v1:0` sobre Amazon Bedrock |
 | **Configuración** | Idéntica para los ocho escenarios, mismo prompt de dominio, misma ventana de historial, mismo presupuesto de iteraciones |
-| **Repeticiones por escenario** | 30 corridas independientes, en tres tandas de 10 |
-| **Corridas totales de la campaña** | 150 (cinco escenarios obligatorios por 30) |
+| **Repeticiones por escenario** | 30 corridas en los cinco escenarios hasta hard, 10 en los tres extreme |
+| **Corridas totales de la campaña** | 180 sobre los ocho escenarios del dataset |
 | **Corridas descartadas por fallo de infraestructura** | 0 |
 
 Las corridas descartadas se cuentan aparte y se excluyen de todos los agregados.
@@ -380,7 +380,14 @@ perdieron en lugar de que desaparezcan en silencio.
 | **apartment keys** | medium | 24 de 30 (80 %) | 61 a 92 |
 | **library search** | hard | 21 de 30 (70 %) | 51 a 85 |
 | **office sequence** | hard | 24 de 30 (80 %) | 61 a 92 |
-| **Total, 150 corridas** | | **118 de 150 (78,7 %)** | **72 a 85** |
+| **extreme archive** | extreme | 9 de 10 (90 %) | 60 a 99 |
+| **backtracking vault** | extreme | 2 de 10 (20 %) | 4 a 52 |
+| **vault combination** | extreme | 1 de 10 (10 %) | 1 a 40 |
+| **Total, 180 corridas** | | **130 de 180 (72 %)** | **66 a 79** |
+
+![Tasa de éxito por escenario](figuras/exito-por-escenario.svg)
+
+Agrupando por dificultad declarada: easy 97 %, medium 73 %, hard 75 %, extreme 40 %. Los cinco escenarios obligatorios hasta hard suman 118 de 150 (78,7 %, intervalo de 72 a 85); los tres extreme, que la consigna reserva para la competencia, bajan el promedio general a 72 %.
 
 Las 150 corridas provienen de tres mediciones independientes de 50, realizadas en
 momentos distintos de la campaña con configuración idéntica. Sus tasas globales
@@ -388,11 +395,24 @@ fueron 80 %, 80 % y 76 %, lo que da una idea directa de la varianza del sistema:
 la misma configuración, medida tres veces con cincuenta repeticiones cada una,
 oscila cuatro puntos.
 
-Ningún escenario alcanza el 100 % sobre treinta repeticiones, es decir, medido
-como pass^k con k igual a treinta, ningún escenario es perfectamente confiable.
-El escenario más simple es el que exhibe la tasa más alta, y los dos escenarios
-de dificultad hard muestran tasas bajas, un ordenamiento consistente con la
-dificultad declarada de cada uno.
+Ningún escenario alcanza el 100 %, es decir, medido como pass^k ningún
+escenario es perfectamente confiable. El ordenamiento general acompaña la
+dificultad declarada, con una excepción que vale la pena analizar aparte.
+
+**El caso de extreme archive.** Este escenario esconde una llave entre veinte
+expedientes con prosa burocrática y está descripto en la consigna como diseñado para no caber en la ventana de contexto de los modelos chicos. Con
+Nova Lite se resuelve el 90 % de las veces, por encima de cuatro de los cinco
+escenarios obligatorios. La instrumentación explica por qué: los picos de
+tokens de entrada de esas corridas van de 15.304 a 16.468, justo alrededor de
+los 16.384 que el proveedor local imponía como techo de ventana y que Bedrock
+no impone. La dificultad de ese escenario no era una propiedad de la tarea
+sino del modelo con el que se lo corriera, y es la confirmación más literal de
+la tesis de la sección 3.4.
+
+Los dos escenarios extreme que sí resisten son los de horizonte largo y varias
+salas, vault combination con 10 % y backtracking vault con 20 %. Ambos exigen
+combinar objetos hallados en salas distintas y volver sobre los pasos, y ambos
+fallan exclusivamente por bucle, agotando el presupuesto de cien iteraciones con 98 y 86 pasos medios respectivamente.
 
 ### 3.4. El modelo domina sobre las decisiones de framework
 
@@ -432,7 +452,12 @@ La tasa de éxito responde si el agente llega. La eficiencia responde a qué cos
 | **apartment keys** | 7 | 14,5 | 0,50 | 114.190 | 12,8 s |
 | **library search** | 7 | 17,0 | 0,42 | 276.068 | 15,4 s |
 | **office sequence** | 13 | 77,2 | **0,27** | 318.242 | 87,9 s |
-| **Global** | | | **0,48** | | |
+| **extreme archive** | 4 | 31,5 | **0,17** | — | — |
+| **backtracking vault** | 18 | 85,6 | 0,64 | — | — |
+| **vault combination** | 21 | 97,8 | 0,78 | — | — |
+| **Global, cinco obligatorios** | | | **0,48** | | |
+
+![Eficiencia por escenario](figuras/eficiencia-por-escenario.svg)
 
 La eficiencia decrece de forma monótona con la dificultad declarada del
 escenario, y el caso extremo es office sequence: figura entre los mejores por
@@ -445,6 +470,19 @@ cuantitativas en lugar de una. Medido solo por correctitud, office sequence y
 apartment keys son indistinguibles, ambos al 80 %. Medido también por eficiencia,
 uno resuelve cerca del camino ideal y el otro da vueltas hasta casi agotar el
 presupuesto.
+
+Extreme archive vuelve a ser el caso instructivo, ahora por el otro extremo:
+es el escenario con mejor tasa de éxito después del más simple, y a la vez el
+de peor eficiencia de las ocho, 0,17. Su solución óptima son cuatro llamadas y
+el agente usa treinta y uno. Resuelve examinando expedientes por fuerza bruta
+hasta dar con el correcto, no razonando sobre cuál examinar. Medido solo por
+correctitud parecería uno de los escenarios mejor resueltos del conjunto;
+medido también por eficiencia queda claro que llega sin haber entendido el
+problema.
+
+Las eficiencias altas de vault combination y backtracking vault, 0,78 y 0,64,
+se calculan sobre una y dos corridas exitosas respectivamente, así que no
+admiten lectura, se reportan por completitud.
 
 La latencia se reporta por mediana y no por media. Durante la campaña una corrida
 quedó registrada en 6.207 segundos, frente a una mediana de 12, porque la máquina
@@ -472,6 +510,8 @@ dimensiones, y la separación es más pronunciada en recuperación ante errores,
 3,80 a 1,70. Eso es coherente con el modo de fallo dominante que reporta la
 sección 3.4: una corrida que entra en bucle es, por definición, una corrida que
 no se recupera.
+
+![Rúbrica del juez por condición](figuras/juez-por-condicion.svg)
 
 Las corridas exitosas obtienen 3,52 en eficiencia de la exploración, la nota más
 baja de las tres dimensiones dentro de ese grupo. El agente llega a la meta pero
@@ -512,6 +552,8 @@ invocarla.
 | 50 mensajes | 35/50 (70 %) | 48 % | 50,5 | 218.744 |
 | 8 mensajes | 29/50 (58 %) | 58 % | 60,5 | 120.376 |
 | 4 mensajes | 17/50 (34 %) | 77 % | 78,4 | 138.797 |
+
+![E1, efecto del tamaño de la ventana](figuras/e1-memoria.svg)
 
 Acá la hipótesis original **se confirma**: recortar la ventana aumenta la
 repetición de forma monótona, de 48 % a 77 %, y el agente en lugar de colapsar
@@ -752,6 +794,11 @@ export BEDROCK_MODEL_ID="amazon.nova-lite-v1:0" AWS_REGION="us-east-2"
 python eval/run.py --juez                       # baseline sobre los escenarios
 python eval/run.py --experimento e1-memoria     # y análogo para e2 … e6
 ```
+
+Las figuras de este informe se regeneran con `python eval/figuras.py`, que las
+construye en SVG desde los resúmenes versionados sin ninguna dependencia de
+graficación y sin llamar al modelo: reproducirlas no requiere credenciales ni
+proveedor.
 
 Las trazas crudas de cada corrida quedan en `eval/results/`, y los resúmenes
 agregados de cada campaña están versionados en el repositorio
