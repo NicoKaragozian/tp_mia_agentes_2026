@@ -13,7 +13,13 @@ Dos decisiones que hacen honesta la comparación:
 * el anotador **no** ve la nota del juez. Las notas viven aparte, en el
   archivo de claves, y solo se leen al calcular el acuerdo.
 
-Uso:
+**Estado en esta entrega: sin correr.** El instrumento está construido y
+testeado, pero el etiquetado humano no se hizo, así que no hay coeficiente de
+acuerdo que reportar y las notas del juez se leen como señal comparativa entre
+condiciones. La sección 2.5 del informe lo documenta como limitación.
+
+El material a etiquetar no está versionado —son 128K de cuadernillo y una
+planilla vacía— y se regenera cuando haga falta:
 
     python eval/calibracion.py armar      # genera el material a etiquetar
     python eval/calibracion.py acuerdo    # una vez completadas las planillas
