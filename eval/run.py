@@ -163,6 +163,22 @@ def main(argv: list[str] | None = None) -> int:
                         f"(`aws sso login`). Último error:\n"
                         f"{(traza.fallo_infra or '').strip().splitlines()[-1]}"
                     )
+                    # Antes de salir se agrega lo que YA se midió. Abortar sin
+                    # guardar deja el directorio con los JSON por caso pero sin
+                    # `trazas.json` ni `summary.json`, y una campaña de horas
+                    # queda inutilizable hasta que alguien la reconstruya a
+                    # mano. Las corridas ya están pagas: perderlas es el peor
+                    # desenlace posible de una interrupción.
+                    parcial = [t.como_dict() for t in trazas]
+                    (destino / "trazas.json").write_text(
+                        json.dumps(parcial, indent=2, ensure_ascii=False),
+                        encoding="utf-8",
+                    )
+                    escribir(destino, parcial)
+                    print(
+                        f"Se guardaron las {len(parcial)} corridas ya hechas en "
+                        f"{destino} (parcial)."
+                    )
                     raise SystemExit(2)
                 marca_meta = "OK " if traza.meta_lograda else "fail"
                 extra = " (infra)" if traza.fallo_infra else ""
