@@ -1,34 +1,34 @@
 {
-  "n_corridas": 242,
+  "n_corridas": 250,
   "modelo": "bedrock:amazon.nova-lite-v1:0",
   "global": {
-    "n": 240,
-    "descartadas": 2,
-    "exitos": 202,
-    "tasa_exito": 0.842,
-    "eficiencia_media": 0.461,
-    "pasos_medios": 37.0,
-    "repeticion_media": 0.384,
-    "llamadas_llm_medias": 37.0,
-    "tokens_entrada_medios": 160489,
-    "tokens_salida_medios": 2040,
-    "latencia_media_s": 34.7,
-    "latencia_mediana_s": 15.3
+    "n": 250,
+    "descartadas": 0,
+    "exitos": 211,
+    "tasa_exito": 0.844,
+    "eficiencia_media": 0.457,
+    "pasos_medios": 38.1,
+    "repeticion_media": 0.396,
+    "llamadas_llm_medias": 38.0,
+    "tokens_entrada_medios": 163227,
+    "tokens_salida_medios": 2071,
+    "latencia_media_s": 35.5,
+    "latencia_mediana_s": 15.6
   },
   "por_condicion": {
     "con_reflexion": {
-      "n": 240,
-      "descartadas": 2,
-      "exitos": 202,
-      "tasa_exito": 0.842,
-      "eficiencia_media": 0.461,
-      "pasos_medios": 37.0,
-      "repeticion_media": 0.384,
-      "llamadas_llm_medias": 37.0,
-      "tokens_entrada_medios": 160489,
-      "tokens_salida_medios": 2040,
-      "latencia_media_s": 34.7,
-      "latencia_mediana_s": 15.3
+      "n": 250,
+      "descartadas": 0,
+      "exitos": 211,
+      "tasa_exito": 0.844,
+      "eficiencia_media": 0.457,
+      "pasos_medios": 38.1,
+      "repeticion_media": 0.396,
+      "llamadas_llm_medias": 38.0,
+      "tokens_entrada_medios": 163227,
+      "tokens_salida_medios": 2071,
+      "latencia_media_s": 35.5,
+      "latencia_mediana_s": 15.6
     }
   },
   "por_dificultad": {
@@ -47,18 +47,18 @@
       "latencia_mediana_s": 4.6
     },
     "hard": {
-      "n": 90,
-      "descartadas": 2,
-      "exitos": 71,
-      "tasa_exito": 0.789,
-      "eficiencia_media": 0.324,
-      "pasos_medios": 56.8,
-      "repeticion_media": 0.475,
-      "llamadas_llm_medias": 55.9,
-      "tokens_entrada_medios": 270421,
-      "tokens_salida_medios": 2988,
-      "latencia_media_s": 53.4,
-      "latencia_mediana_s": 25.7
+      "n": 100,
+      "descartadas": 0,
+      "exitos": 80,
+      "tasa_exito": 0.8,
+      "eficiencia_media": 0.328,
+      "pasos_medios": 57.4,
+      "repeticion_media": 0.494,
+      "llamadas_llm_medias": 56.6,
+      "tokens_entrada_medios": 266273,
+      "tokens_salida_medios": 2970,
+      "latencia_media_s": 53.5,
+      "latencia_mediana_s": 27.2
     },
     "medium": {
       "n": 100,
@@ -119,18 +119,18 @@
       "latencia_mediana_s": 15.1
     },
     "office-sequence": {
-      "n": 40,
-      "descartadas": 2,
-      "exitos": 28,
-      "tasa_exito": 0.7,
-      "eficiencia_media": 0.231,
-      "pasos_medios": 84.8,
-      "repeticion_media": 0.778,
-      "llamadas_llm_medias": 84.7,
-      "tokens_entrada_medios": 338285,
-      "tokens_salida_medios": 4157,
-      "latencia_media_s": 78.7,
-      "latencia_mediana_s": 92.1
+      "n": 50,
+      "descartadas": 0,
+      "exitos": 37,
+      "tasa_exito": 0.74,
+      "eficiencia_media": 0.263,
+      "pasos_medios": 80.3,
+      "repeticion_media": 0.755,
+      "llamadas_llm_medias": 80.3,
+      "tokens_entrada_medios": 316416,
+      "tokens_salida_medios": 3888,
+      "latencia_media_s": 73.8,
+      "latencia_mediana_s": 90.7
     },
     "study-with-key": {
       "n": 50,
@@ -192,18 +192,18 @@
         "latencia_mediana_s": 15.1
       },
       "office-sequence": {
-        "n": 40,
-        "descartadas": 2,
-        "exitos": 28,
-        "tasa_exito": 0.7,
-        "eficiencia_media": 0.231,
-        "pasos_medios": 84.8,
-        "repeticion_media": 0.778,
-        "llamadas_llm_medias": 84.7,
-        "tokens_entrada_medios": 338285,
-        "tokens_salida_medios": 4157,
-        "latencia_media_s": 78.7,
-        "latencia_mediana_s": 92.1
+        "n": 50,
+        "descartadas": 0,
+        "exitos": 37,
+        "tasa_exito": 0.74,
+        "eficiencia_media": 0.263,
+        "pasos_medios": 80.3,
+        "repeticion_media": 0.755,
+        "llamadas_llm_medias": 80.3,
+        "tokens_entrada_medios": 316416,
+        "tokens_salida_medios": 3888,
+        "latencia_media_s": 73.8,
+        "latencia_mediana_s": 90.7
       },
       "study-with-key": {
         "n": 50,
@@ -222,8 +222,7 @@
     }
   },
   "modos_de_fallo": {
-    "bucle": 38,
-    "fallo_infraestructura": 2
+    "bucle": 39
   },
   "rubrica_media": {},
   "rubrica_por_condicion": {}

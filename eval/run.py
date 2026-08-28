@@ -93,6 +93,15 @@ def _parser() -> argparse.ArgumentParser:
         help="Corridas por caso; el LLM es estocástico (defecto: 3).",
     )
     p.add_argument(
+        "--desde",
+        type=int,
+        default=0,
+        help=(
+            "Primera repetición a correr. Sirve para retomar una campaña "
+            "interrumpida sin volver a pagar las que ya se hicieron."
+        ),
+    )
+    p.add_argument(
         "--smoke",
         action="store_true",
         help="Corrida mínima de humo: escenario fácil, 1 repetición.",
@@ -133,7 +142,7 @@ def main(argv: list[str] | None = None) -> int:
     destino = Path(args.salida) if args.salida else DIR_RESULTADOS / f"{etiqueta}-{marca}"
     destino.mkdir(parents=True, exist_ok=True)
 
-    total = len(escenarios) * len(condiciones) * repeticiones
+    total = len(escenarios) * len(condiciones) * max(0, repeticiones - args.desde)
     print(f"# {etiqueta}: {total} corridas | modelo: {modelo}")
     print(f"# resultados -> {destino}\n")
 
@@ -142,7 +151,7 @@ def main(argv: list[str] | None = None) -> int:
     fallos_seguidos = 0
     for condicion in condiciones:
         for escenario in escenarios:
-            for rep in range(repeticiones):
+            for rep in range(args.desde, repeticiones):
                 hecho += 1
                 print(
                     f"[{hecho}/{total}] {condicion.nombre} · {escenario} · rep {rep}",
