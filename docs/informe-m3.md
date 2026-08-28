@@ -2,11 +2,9 @@
 
 **Agentes Autónomos y Sistemas de Decisión**
 
-HOFMANN · PIVOTTO · KARAGOZIAN
+Valentino Pivotto · Federico Hofmann · Nicolás Karagozian
 
 Universidad de San Andrés — Maestría en Inteligencia Artificial
-
-Buenos Aires, Agosto de 2026
 
 ---
 
