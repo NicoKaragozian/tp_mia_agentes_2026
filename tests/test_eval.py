@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import pytest
 
+from eval.bucle import detectar_ciclo, primera_repeticion
 from eval.analysis import (
     clasificar,
     fraccion_repetidas,
@@ -368,3 +369,47 @@ def test_desborde_no_se_marca_con_el_techo_de_otro_proveedor():
     assert "desborde_contexto" not in clasificar(
         {**base, "modelo": "bedrock:amazon.nova-lite-v1:0"}
     )
+
+
+# --- deteccion de ciclos improductivos ---------------------------------------
+
+
+def _pasos(acciones):
+    """Arma una lista de pasos a partir de nombres de herramienta."""
+    return [
+        {"indice": i, "herramienta": a, "argumentos": "{}", "salida": "", "error": None}
+        for i, a in enumerate(acciones)
+    ]
+
+
+def test_primera_repeticion_encuentra_el_indice():
+    pasos = _pasos(["look", "examine", "take", "look"])
+    assert primera_repeticion(pasos) == 3
+
+
+def test_primera_repeticion_none_si_todo_es_distinto():
+    assert primera_repeticion(_pasos(["look", "examine", "take"])) is None
+
+
+def test_detectar_ciclo_ignora_una_repeticion_aislada():
+    """Una repetición suelta no es un ciclo: el 65 % de las corridas que
+    repiten alguna vez igual llegan a la meta."""
+    pasos = _pasos(["look", "a", "b", "look"] + [f"t{i}" for i in range(20)])
+    assert detectar_ciclo(pasos) is None
+
+
+def test_detectar_ciclo_dispara_con_repeticion_sostenida():
+    """Veinte pasos alternando entre dos acciones son media docena de
+    acciones distintas sobre veinte: muy por debajo del umbral."""
+    pasos = _pasos([f"t{i}" for i in range(10)] + ["a", "b"] * 10)
+    indice = detectar_ciclo(pasos)
+    assert indice is not None and indice >= 10
+
+
+def test_detectar_ciclo_no_dispara_si_la_corrida_es_corta():
+    assert detectar_ciclo(_pasos(["a"] * 5)) is None
+
+
+def test_detectar_ciclo_rechaza_ventana_invalida():
+    with pytest.raises(ValueError):
+        detectar_ciclo(_pasos(["a"] * 30), ventana=0)
