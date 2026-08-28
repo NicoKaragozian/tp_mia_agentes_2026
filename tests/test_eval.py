@@ -11,6 +11,7 @@ from __future__ import annotations
 import pytest
 
 from eval.bucle import detectar_ciclo, primera_repeticion
+from eval.metrics import pass_at_k, pass_pow_k
 from eval.analysis import (
     clasificar,
     fraccion_repetidas,
@@ -413,3 +414,37 @@ def test_detectar_ciclo_no_dispara_si_la_corrida_es_corta():
 def test_detectar_ciclo_rechaza_ventana_invalida():
     with pytest.raises(ValueError):
         detectar_ciclo(_pasos(["a"] * 30), ventana=0)
+
+
+# --- pass@k y pass^k ---------------------------------------------------------
+
+
+def test_pass_at_k_crece_con_los_intentos():
+    """Reintentar solo puede ayudar."""
+    valores = [pass_at_k(30, 20, k) for k in (1, 2, 3, 5)]
+    assert valores == sorted(valores)
+    assert valores[0] == pytest.approx(20 / 30)
+
+
+def test_pass_pow_k_decrece_con_los_intentos():
+    """Exigir k aciertos seguidos solo puede costar más."""
+    valores = [pass_pow_k(30, 20, k) for k in (1, 2, 3, 5)]
+    assert valores == sorted(valores, reverse=True)
+    assert valores[0] == pytest.approx(20 / 30)
+
+
+def test_pass_at_k_degenera_cuando_no_quedan_fracasos():
+    """Con n=10 y un solo éxito, pass@10 es 1,0 por construcción."""
+    assert pass_at_k(10, 1, 10) == 1.0
+    assert pass_at_k(10, 1, 5) == pytest.approx(0.5)
+
+
+def test_pass_pow_k_es_cero_si_faltan_exitos():
+    assert pass_pow_k(10, 2, 3) == 0.0
+
+
+def test_pass_k_rechaza_argumentos_imposibles():
+    with pytest.raises(ValueError):
+        pass_at_k(10, 11, 1)
+    with pytest.raises(ValueError):
+        pass_pow_k(10, 5, 0)
