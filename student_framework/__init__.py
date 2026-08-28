@@ -42,6 +42,7 @@ def build_agent(config: dict[str, Any] | None = None) -> Agent:
         "memoria_de_acciones",
         "bloquear_repeticiones",
         "planificar",
+        "reflexionar",
     ):
         if clave in config:
             kwargs[clave] = config[clave]

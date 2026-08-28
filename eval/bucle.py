@@ -22,13 +22,12 @@ from __future__ import annotations
 
 from typing import Any
 
-#: Ventana móvil y umbral de diversidad elegidos por barrido sobre las 180
-#: corridas baseline. Con estos valores el detector dispara en el 100 % de las
-#: corridas que fracasan y solo en el 14 % de las que triunfan, en el paso 19
-#: (mediana), dejando unos 80 pasos de margen para intervenir. Ventanas más
-#: cortas o umbrales más altos suben la falsa alarma sin ganar sensibilidad.
-VENTANA_CICLO = 20
-UMBRAL_CICLO = 0.5
+# Los umbrales viven con el agente, que es quien los usa en producción; acá
+# solo se los aplica a las trazas ya grabadas. Duplicarlos sería garantizar
+# que en algún momento discrepen.
+from student_framework.ciclos import UMBRAL_CICLO, VENTANA_CICLO
+
+__all__ = ["UMBRAL_CICLO", "VENTANA_CICLO", "detectar_ciclo", "primera_repeticion"]
 
 
 def _clave(paso: dict[str, Any]) -> tuple[str, str]:
