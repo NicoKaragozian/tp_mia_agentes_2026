@@ -180,6 +180,71 @@ E5_BLOQUEO = [
 
 #: E6 — planificación explícita. Único intento arquitectónico: en vez de
 #: ajustar un parámetro del bucle reactivo, el agente escribe un plan de
+#: E7 — reflexión ante un ciclo. El bucle es el único modo de fallo que
+#: sobrevive con Nova Lite. E5 lo atacó prohibiendo repeticiones y empeoró; el
+#: diagnóstico posterior mostró por qué (disparaba en el paso 3, sobre
+#: corridas que se recuperaban solas). Acá el disparador está calibrado sobre
+#: las trazas y la respuesta es pedir replanteo en lugar de prohibir.
+E7_REFLEXION = [
+    BASELINE,
+    Condicion(
+        nombre="con_reflexion",
+        descripcion="Baseline más un turno de reflexión al detectar un ciclo.",
+        overrides={
+            "system_prompt": PROMPT_SALA_DE_ESCAPE,
+            "max_history_messages": 50,
+            "memoria_de_acciones": False,
+            "reflexionar": True,
+        },
+    ),
+]
+
+#: E8 — temperatura. Las 834 corridas anteriores usaron el default de 0,2 sin
+#: excepción. El bucle es una patología de repetición y la temperatura es la
+#: perilla más directa sobre repetición que existe, así que dejarla fija era
+#: una variable no controlada.
+E8_TEMPERATURA = [
+    BASELINE,
+    Condicion(
+        nombre="temperatura_05",
+        descripcion="Baseline con temperatura 0,5.",
+        overrides={
+            "system_prompt": PROMPT_SALA_DE_ESCAPE,
+            "max_history_messages": 50,
+            "memoria_de_acciones": False,
+            "temperatura": 0.5,
+        },
+    ),
+    Condicion(
+        nombre="temperatura_09",
+        descripcion="Baseline con temperatura 0,9.",
+        overrides={
+            "system_prompt": PROMPT_SALA_DE_ESCAPE,
+            "max_history_messages": 50,
+            "memoria_de_acciones": False,
+            "temperatura": 0.9,
+        },
+    ),
+]
+
+#: E9 — herramientas distractoras. El runner corre sin las tools de M1/M2
+#: porque "son distractores que ocupan contexto"; eso venía siendo una
+#: afirmación del código que nadie había medido.
+E9_DISTRACTORES = [
+    BASELINE,
+    Condicion(
+        nombre="con_distractores",
+        descripcion="Baseline más las tools de M1/M2, que no resuelven nada acá.",
+        overrides={
+            "system_prompt": PROMPT_SALA_DE_ESCAPE,
+            "max_history_messages": 50,
+            "memoria_de_acciones": False,
+            "tools_por_defecto": True,
+        },
+    ),
+]
+
+
 #: sub-objetivos antes de empezar y lo mantiene en el system prompt.
 E6_PLANNER = [
     BASELINE,
@@ -201,6 +266,9 @@ EXPERIMENTOS: dict[str, list[Condicion]] = {
     "e4-presupuesto": E4_PRESUPUESTO,
     "e5-bloqueo": E5_BLOQUEO,
     "e6-planner": E6_PLANNER,
+    "e7-reflexion": E7_REFLEXION,
+    "e8-temperatura": E8_TEMPERATURA,
+    "e9-distractores": E9_DISTRACTORES,
 }
 
 
@@ -276,5 +344,49 @@ HIPOTESIS: dict[str, str] = {
         "tasa de éxito y reduzca las paradas prematuras. Refutaría la "
         "hipótesis que la diferencia sea nula, lo que indicaría que el cuello "
         "de botella es la capacidad del modelo y no la instrucción."
+    ),
+    # AMPLIACIÓN PRE-REGISTRADA de E7, escrita antes de correrla.
+    #
+    # Primera medición: con_reflexion 42/50 (84 %) contra su propio brazo
+    # baseline 34/50 (68 %), p = 0,100. Pero los seis brazos baseline de la
+    # campaña son homogéneos (chi2 = 3,13, gl = 5, crítico 11,07) y agrupan
+    # 227/300 = 75,7 %, así que el 68 % fue una tirada baja y no una condición
+    # distinta. Contra esa estimación, mucho más precisa, la reflexión queda en
+    # +8 puntos con p = 0,276: prometedora y no establecida.
+    #
+    # COMPROMISO: se corren exactamente 250 repeticiones más del brazo
+    # con_reflexion (50 por escenario sobre los cinco obligatorios), llevándolo
+    # de n = 50 a n = 300, y se reporta el resultado agrupado sea cual sea. No
+    # se agregan corridas después de mirar el p-valor, que es lo que
+    # convertiría esto en p-hacking. Si el efecto se desinfla, el nulo con
+    # n = 300 contra n = 300 también es un resultado, y más informativo que el
+    # p = 0,276 de ahora.
+    "e7-ampliacion": (
+        "El efecto de la reflexión se sostiene con más potencia: con_reflexion "
+        "queda por encima del baseline agrupado de 227/300 con p < 0,05. La "
+        "hipótesis alternativa que tomamos en serio es que el 84 % inicial haya "
+        "sido en parte una tirada alta, y que con n = 300 el efecto se achique "
+        "hacia el 76 % del baseline."
+    ),
+    "e7-reflexion": (
+        "Un turno de reflexión disparado por repetición SOSTENIDA sube la tasa "
+        "de éxito respecto del baseline, a diferencia de E5. El disparador "
+        "calibrado aparece en el 100 % de las corridas que fracasan y solo en "
+        "el 14 % de las que triunfan, con unos 80 pasos de margen por delante, "
+        "así que la intervención llega a tiempo y casi no molesta a quien iba "
+        "bien. Riesgo asumido: el 14 % de falsa alarma puede descarrilar "
+        "corridas sanas, igual que en E5 pero mucho menos seguido."
+    ),
+    "e8-temperatura": (
+        "Subir la temperatura reduce el bucle, porque el ciclo es un atractor "
+        "determinista y basta ruido para salir. Esperamos una curva en U: 0,5 "
+        "mejor que 0,2 por romper ciclos, y 0,9 peor que 0,5 porque el ruido "
+        "empieza a arruinar la disciplina de tool calling."
+    ),
+    "e9-distractores": (
+        "Agregar las tres tools de M1/M2 baja la tasa de éxito y sube el "
+        "consumo de tokens. Es la afirmación que el código viene haciendo sin "
+        "haberla medido; si el efecto resulta nulo, el comentario hay que "
+        "corregirlo."
     ),
 }

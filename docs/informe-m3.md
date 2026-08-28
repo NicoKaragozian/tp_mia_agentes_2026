@@ -2,11 +2,9 @@
 
 **Agentes Autónomos y Sistemas de Decisión**
 
-HOFMANN · PIVOTTO · KARAGOZIAN
+Valentino Pivotto · Federico Hofmann · Nicolás Karagozian
 
 Universidad de San Andrés — Maestría en Inteligencia Artificial
-
-Buenos Aires, Agosto de 2026
 
 ---
 
@@ -15,7 +13,8 @@ Buenos Aires, Agosto de 2026
 Este trabajo evalúa un agente ReAct construido desde cero a lo largo de tres
 milestones, resolviendo ocho escenarios de escape room mediante herramientas de
 mundo. La medición central son **180 corridas** con `amazon.nova-lite-v1:0`
-sobre Amazon Bedrock, más seis experimentos de ablación sobre el framework.
+sobre Amazon Bedrock, y sobre ellas se apoyan **nueve experimentos** de ablación
+que suman más de 1.400 corridas del agente en total.
 
 **Resultado.** El agente resuelve **130 de 180 escenarios (72 %, intervalo de
 confianza al 95 % de 65 a 78)**. Sobre los cinco escenarios obligatorios hasta
@@ -25,11 +24,22 @@ el 100 %: medido como pass^k, ninguno es perfectamente confiable.
 **Hallazgo principal.** La elección del modelo domina sobre toda decisión de
 diseño del framework. Cambiar de llama3.1 8B a Nova Lite, **sin tocar una sola
 línea de código**, movió la tasa de éxito de 25 % a 70 % sobre las condiciones
-comparables. Los seis experimentos de ablación —presupuesto de memoria, prompt
-especializado, memoria episódica, presupuesto de iteraciones, bloqueo de
-repeticiones y planificador explícito— no produjeron **ninguna** mejora
-medible sobre el baseline, ni sumados. El techo que estábamos midiendo no era
-el del framework.
+comparables: un salto de 45 puntos que ninguna intervención de framework se
+acerca a igualar.
+
+**El framework no está agotado, pero hay que medir dónde intervenir.** De ocho
+intervenciones probadas, una mejoró el resultado, dos lo empeoraron y cinco no
+lo movieron. La que funcionó fue **E7**, que interrumpe al agente cuando entra
+en un ciclo improductivo y le pide replantear: **75,7 % → 84,3 %, p = 0,0105**,
+con 300 corridas por rama y la ampliación registrada de antemano.
+
+Lo relevante es cómo se llegó. **E5 había probado la misma idea y empeoró el
+resultado**, de 80 % a 70 %. La diferencia no está en la idea sino en el
+disparador: E5 frenaba al agente apenas repetía una acción, y medir las trazas
+mostró que repetir es lo que hacen también las corridas sanas —el 78 % repite
+alguna acción, y el 65 % de las que empiezan a repetir igual llegan a la meta—.
+Recalibrado el disparador contra 180 trazas ya guardadas, la misma idea
+funciona. El experimento que sirvió es el que se diseñó con datos.
 
 **Corolario metodológico.** Las conclusiones de un experimento de ablación no
 transfieren entre modelos. E1 y E2 se corrieron completos sobre las dos
@@ -39,15 +49,17 @@ intervención que ayudaba a llama3.1 es la que perjudica a Nova Lite.
 **Modo de fallo.** Con Nova Lite desaparecen por completo los fallos de
 disciplina de tool calling que dominaban con el modelo chico. Los cincuenta
 fracasos restantes son, sin excepción, **bucle**: el agente repite acciones ya
-ejecutadas hasta agotar el presupuesto de iteraciones. Es la ausencia de una
-condición de parada por deadlock, y es el único frente donde queda trabajo
-claro por hacer.
+ejecutadas hasta agotar el presupuesto de iteraciones. E7 lo mitiga pero no lo
+elimina; el 16 % de fracasos que sobrevive sigue siendo bucle.
 
 **Qué no se puede afirmar.** El juez LLM no está calibrado contra anotación
 humana, así que sus tres dimensiones de conducta valen como señal comparativa
-entre condiciones y no como medición absoluta. Los tres escenarios extreme
+entre condiciones y no como medición absoluta —y hay evidencia de que ni
+siquiera son tres dimensiones: correlacionan entre sí más de lo que correlacionan
+con el resultado, que es el patrón del efecto halo—. Los tres escenarios extreme
 tienen 10 corridas cada uno, muy pocas para sostener comparaciones finas entre
-ellos.
+ellos. No se pudo evaluar un tercer modelo, bloqueado por permisos de la cuenta
+de AWS y no por decisión de diseño.
 
 ## Índice
 
@@ -69,6 +81,7 @@ ellos.
   - [3.4. El modelo domina sobre las decisiones de framework](#34-el-modelo-domina-sobre-las-decisiones-de-framework)
   - [3.5. Eficiencia](#35-eficiencia)
   - [3.6. Dimensiones de conducta según el juez](#36-dimensiones-de-conducta-según-el-juez)
+  - [3.7. Capacidad contra confiabilidad: pass@k y pass^k](#37-capacidad-contra-confiabilidad-passk-y-passk)
 - [4. Experimentos](#4-experimentos)
   - [E1. Presupuesto de memoria conversacional](#e1-presupuesto-de-memoria-conversacional)
   - [E2. Prompt genérico contra prompt especializado](#e2-prompt-genérico-contra-prompt-especializado)
@@ -76,7 +89,10 @@ ellos.
   - [E4. Presupuesto de iteraciones](#e4-presupuesto-de-iteraciones)
   - [E5. Bloqueo de repeticiones estériles](#e5-bloqueo-de-repeticiones-estériles)
   - [E6. Planificador explícito de sub-objetivos](#e6-planificador-explícito-de-sub-objetivos)
-  - [Lectura conjunta de los seis experimentos](#lectura-conjunta-de-los-seis-experimentos)
+  - [E7. Reflexión ante un ciclo detectado](#e7-reflexión-ante-un-ciclo-detectado)
+  - [E8. Temperatura del modelo](#e8-temperatura-del-modelo)
+  - [E9. Herramientas distractoras](#e9-herramientas-distractoras)
+  - [Lectura conjunta de los nueve experimentos](#lectura-conjunta-de-los-nueve-experimentos)
 - [5. Limitaciones y próximos pasos](#5-limitaciones-y-próximos-pasos)
 - [Reproducibilidad](#reproducibilidad)
 
@@ -256,8 +272,8 @@ fallaba después de catorce.
 
 El punto que vale la pena subrayar no es la corrección en sí, sino que
 la suite entera con el cliente simulado había pasado, antes y después, sin
-detectar el problema (doscientos diez tests en ese momento, doscientos sesenta
-y uno en la entrega final), porque ese cliente nunca se equivoca de nombre de
+detectar el problema (doscientos diez tests en ese momento, doscientos noventa
+y cinco en la entrega final), porque ese cliente nunca se equivoca de nombre de
 argumento. Solo un modelo real produce ese tipo de error, y por eso una
 evaluación de agentes que se apoya únicamente en mocks tiene un punto ciego
 estructural.
@@ -395,6 +411,34 @@ del juez. Es una limitación real, reconocida en la sección 5, y significa que 
 dimensiones de calidad reportadas más abajo deben leerse como señal comparativa
 entre condiciones, nunca como una medición calibrada.
 
+El instrumental para hacerlo quedó construido en `eval/calibracion.py`: muestra
+estratificada por escenario y desenlace, cuadernillo que le muestra al anotador
+**el mismo texto que recibió el juez** y nada más, y kappa de Cohen con pesos
+cuadráticos, ponderado porque la rúbrica es ordinal y confundir un 4 con un 5 no
+es el mismo error que confundir un 1 con un 5. Lo que falta es el etiquetado
+humano, que no se hizo: calibrar contra tres anotadores independientes.
+
+Sí se pudo hacer una comprobación más barata que no necesita anotadores, y el
+resultado es incómodo. Sobre las 349 trazas juzgadas, **las tres dimensiones
+correlacionan entre sí mucho más de lo que cada una correlaciona con el
+desenlace**:
+
+| | Correlación |
+| :---- | :---- |
+| coherencia de plan ↔ recuperación de errores | r = 0,85 |
+| coherencia de plan ↔ exploración eficiente | r = 0,85 |
+| recuperación de errores ↔ exploración eficiente | r = 0,74 |
+| cada dimensión ↔ éxito de la corrida | r = 0,49 a 0,66 |
+
+Es el patrón característico del **efecto halo**: el juez forma un juicio global
+de "esta traza se ve bien" y lo distribuye entre tres casilleros que el schema
+presenta como independientes. Cada dimensión discrimina éxito de fracaso
+razonablemente bien por separado, con área bajo la curva entre 0,79 y 0,88, pero
+tratarlas como tres mediciones distintas sobrestima cuánta información aportan
+en conjunto. Una rúbrica que quisiera medir de verdad tres conductas separadas
+tendría que forzar esa separación, por ejemplo puntuando cada dimensión en una
+llamada distinta, sin ver las otras dos.
+
 ---
 
 ## 3. Resultados
@@ -524,8 +568,9 @@ Son 32 corridas con llama3.1 y 100 con Nova Lite.
 | Otros modos combinados | 21 % | 0 % |
 
 El cambio de modelo, por sí solo, movió la tasa de éxito de 25 % a 70 % sin
-modificar una sola línea del framework. Es un efecto mayor que el de cualquiera
-de los seis experimentos de la sección siguiente, incluso sumados. (La campaña
+modificar una sola línea del framework. Es un efecto mayor que el de todas las
+intervenciones de framework de la sección siguiente juntas: la única que resultó
+positiva, E7, aporta 8,7 puntos contra los 45 del cambio de modelo. (La campaña
 completa de Nova Lite, con la configuración final y los ocho escenarios, llega
 al 72 % que reporta la sección 3.3; el 70 % de esta tabla corresponde solo a las
 condiciones que admiten comparación directa con llama3.1.)
@@ -631,6 +676,49 @@ Las corridas exitosas obtienen 3,52 en eficiencia de la exploración, la nota m�
 baja de las tres dimensiones dentro de ese grupo. El agente llega a la meta pero
 explorando con redundancia, exactamente lo que la sección 3.5 muestra en términos
 cuantitativos con una eficiencia global de 0,48.
+
+---
+
+### 3.7. Capacidad contra confiabilidad: pass@k y pass^k
+
+La tasa de éxito de una corrida responde una pregunta, pero hay dos preguntas
+distintas que un sistema de agentes tiene que poder contestar, y dan respuestas
+muy diferentes sobre esta campaña.
+
+`pass@k` es la probabilidad de que **al menos uno** de k intentos llegue a la
+meta: responde "¿sirve si lo reintento?". `pass^k` es la probabilidad de que los
+k intentos acierten **todos**: responde "¿puedo confiar en él?". Ambas se
+calculan sobre las corridas ya medidas con los estimadores insesgados
+habituales, sin correr nada nuevo.
+
+| Escenario | pass@1 | pass@3 | pass@5 | pass^3 | pass^5 |
+| :---- | :---- | :---- | :---- | :---- | :---- |
+| study with key | 97 % | 100 % | 100 % | 90 % | 83 % |
+| apartment keys | 80 % | 100 % | 100 % | 50 % | 30 % |
+| office sequence | 80 % | 100 % | 100 % | 50 % | 30 % |
+| library search | 70 % | 98 % | 100 % | 33 % | 14 % |
+| color locks | 67 % | 97 % | 100 % | 28 % | 11 % |
+| extreme archive | 90 % | 100 % | 100 % | 70 % | 50 % |
+| backtracking vault | 20 % | 53 % | 78 % | 0 % | 0 % |
+| vault combination | 10 % | 30 % | 50 % | 0 % | 0 % |
+
+Las dos columnas centrales cuentan historias opuestas. **Con tres intentos, los
+cinco escenarios obligatorios están entre 97 % y 100 %**: como sistema al que se
+le permite reintentar, el agente esencialmente los resuelve. Pero exigirle cinco
+aciertos consecutivos deja solo a study with key por encima del 80 %, y color
+locks cae al 11 %.
+
+Es la distinción entre un agente **capaz** y un agente **confiable**, y separa
+dos productos distintos. Uno que corre con una persona mirando, que puede
+reintentar cuando algo sale mal, está esencialmente listo. Uno que corre sin
+supervisión, donde cada corrida tiene que salir bien, no lo está ni cerca.
+Reportar solo `pass@1` oculta la primera lectura; reportar solo `pass@k` oculta
+la segunda.
+
+Una advertencia sobre el estimador: cuando quedan menos fracasos que k en la
+muestra, `pass@k` devuelve 1,0 por construcción. Con los tres escenarios extreme,
+que tienen diez corridas, `pass@10` no dice nada sobre el sistema y por eso no
+aparece en la tabla.
 
 ---
 
@@ -833,48 +921,228 @@ plan sino la incapacidad del modelo para ejecutarlo. Dárselo explícito, en un
 formato validado y sostenido fuera del presupuesto de la ventana, no cambió su
 conducta.
 
-### Lectura conjunta de los seis experimentos
+### E7. Reflexión ante un ciclo detectado
+
+E5 atacó el bucle prohibiendo repeticiones y empeoró el resultado. En lugar de
+descartar la idea, se midió por qué había fallado, y el diagnóstico cambió por
+completo el diseño de la intervención.
+
+**El diagnóstico.** Sobre las 180 corridas de la campaña baseline se buscó el
+paso en que cada corrida repite por primera vez una acción. El resultado
+contradice la intuición: el 78 % de las corridas repite alguna acción, y la
+primera repetición cae en el paso 3 —mediana— tanto en las que terminan bien
+como en las que terminan mal. Peor todavía, el 65 % de las corridas que empiezan
+a repetir igual llegan a la meta.
+
+Es decir, "repitió una acción" no separa absolutamente nada, y ahí está la
+explicación mecánica del fracaso de E5: el bloqueo se activaba en el paso 3 de
+corridas sanas y castigaba sobre todo a las dos terceras partes que se
+recuperaban solas. No era una mala idea mal implementada, era una buena idea con
+el disparador equivocado.
+
+**El disparador correcto.** Lo que sí distingue no es repetir sino repetir de
+forma sostenida, medido como la diversidad de acciones dentro de una ventana
+móvil. Barriendo el tamaño de la ventana y el umbral de diversidad sobre esas
+mismas 180 corridas:
+
+| Ventana | Umbral | Dispara en las fallidas | Falsa alarma en las exitosas | Paso mediano |
+| :---- | :---- | :---- | :---- | :---- |
+| 8 | 0,6 | 78 % | 16 % | 17 |
+| 12 | 0,5 | 86 % | 13 % | 20 |
+| 16 | 0,5 | 94 % | 14 % | 22 |
+| **20** | **0,5** | **100 %** | **14 %** | **19** |
+
+Con una ventana de veinte acciones y un umbral de diversidad de 0,5, la
+detección aparece en todas las corridas que fracasan y solo en una de cada siete
+de las que triunfan, en el paso 19, dejando unos ochenta pasos de margen para
+hacer algo al respecto. Los umbrales viven en `student_framework/ciclos.py`, con
+el barrido documentado, porque son parte del agente y no del análisis.
+
+**La intervención.** Al dispararse la detección se inyecta un turno que nombra
+las acciones concretas que se están repitiendo y pide un replanteo explícito,
+con tres preguntas sobre qué información no se está usando, qué no se probó
+todavía y qué suposición no se verificó. Nombrar las acciones en vez de avisar
+"estás en un bucle" es deliberado: el aviso genérico le deja al modelo la tarea
+de descubrir cuáles son las acciones estériles, que es justamente lo que ya
+demostró no saber hacer. El aviso no se repite hasta que pasan otras veinte
+acciones, porque mientras dura el ciclo la condición sigue siendo verdadera en
+cada paso y repetirlo veinte veces seguidas lo convertiría en ruido.
+
+**El resultado, y una corrección en el camino.** La primera medición dio 42 de
+50 con reflexión contra 34 de 50 en su propio brazo de control, dieciséis puntos
+de diferencia. Ese número era engañoso. Los seis brazos baseline corridos a lo
+largo de toda la evaluación tienen configuración idéntica y son homogéneos entre
+sí —chi cuadrado de 3,13 sobre cinco grados de libertad, contra un valor crítico
+de 11,07— de modo que agrupan 227 de 300, un 75,7 % que es una estimación mucho
+más precisa del baseline que cualquier brazo individual. El 68 % de ese brazo
+particular fue una tirada baja, no una condición distinta, y contra la
+estimación agrupada la mejora se reducía a ocho puntos con p = 0,276.
+
+Con la diferencia sin establecer, se registró de antemano una ampliación: 250
+corridas más del brazo de tratamiento, llevándolo de 50 a 300, con el
+compromiso escrito de reportar el resultado fuera cual fuera y de no agregar
+corridas después de mirar el p-valor. El compromiso quedó commiteado antes de
+correrlas.
+
+| | Éxito | Intervalo de confianza al 95 % (%) |
+| :---- | :---- | :---- |
+| Baseline agrupado, seis brazos | 227 de 300 (75,7 %) | 71 a 80 |
+| **Con reflexión** | **253 de 300 (84,3 %)** | **80 a 88** |
+
+![E7, reflexión al detectar un ciclo](figuras/e7-reflexion.svg)
+
+Las dos tandas del tratamiento, 42 de 50 y 211 de 250, son indistinguibles entre
+sí (p = 1,000), así que agruparlas es lícito. La diferencia final es de **8,7
+puntos con un test exacto de Fisher de p = 0,0105**: el único efecto positivo
+establecido de todo el trabajo.
+
+**Por qué funciona, mirando el mecanismo.** El efecto agregado de 8,7 puntos
+subestima lo que pasa, porque se reparte sobre las 300 corridas y la reflexión
+solo interviene en un tercio de ellas. Restringiendo la comparación a la
+población que la intervención efectivamente toca —las corridas que entran en un
+ciclo— el cuadro es mucho más nítido:
+
+| | Corridas que entran en ciclo | Éxito |
+| :---- | :---- | :---- |
+| Baseline (el detector *habría* disparado) | 108 de 300 (36 %) | 37 de 108 (34 %) |
+| Con reflexión (el detector disparó) | 99 de 300 (33 %) | **55 de 99 (56 %)** |
+
+Entre las corridas que se traban, la reflexión sube el éxito de 34 % a 56 %
+(p = 0,003). Y la tasa a la que las corridas entran en ciclo es prácticamente la
+misma en las dos ramas, 36 % contra 33 %, lo cual respalda la lectura mecánica:
+la intervención **no evita que el agente se trabe, cambia lo que pasa después**.
+En las 201 corridas donde nunca se disparó, la tasa de éxito fue del 99 %,
+confirmando que el disparador no molesta a quien iba bien.
+
+Este corte es post hoc y no estaba registrado de antemano, a diferencia del
+contraste principal, así que vale como explicación del mecanismo y no como
+evidencia independiente.
+
+Vale la pena subrayar de dónde salió. E5 y E7 prueban la misma hipótesis de
+fondo —que interrumpir el ciclo ayuda— y llegan a conclusiones opuestas. Lo
+único que cambió entre uno y otro es cuándo se dispara la interrupción, y ese
+"cuándo" no se eligió por intuición sino calibrándolo contra las trazas ya
+medidas. Es el argumento más concreto de este informe a favor de instrumentar
+las corridas: sin las trazas guardadas, E5 habría quedado como evidencia de que
+la idea no funciona.
+
+### E8. Temperatura del modelo
+
+Las 834 corridas anteriores usaron la temperatura por defecto de 0,2, sin
+excepción. Era una variable no controlada, y no una cualquiera: el bucle es una
+patología de repetición y la temperatura es la perilla más directa que existe
+sobre la repetición.
+
+La hipótesis registrada de antemano predecía una curva en U: 0,5 mejor que 0,2
+por romper los ciclos deterministas, y 0,9 peor que 0,5 porque el ruido empezaría
+a arruinar la disciplina de tool calling.
+
+Con 50 corridas por rama el resultado fue 39 de 50 a temperatura 0,2, 39 de 50 a
+0,5 y 40 de 50 a 0,9. Los dos contrastes contra el control dan p = 1,000.
+
+**La hipótesis quedó refutada en las dos mitades a la vez**, y eso es más
+interesante que un nulo simple. El ciclo no era un atractor determinista del que
+se saliera con ruido, y la disciplina de tool calling de Nova Lite tampoco se
+degrada a temperatura alta, al menos no hasta 0,9. La temperatura, para esta
+tarea y este modelo, sencillamente no es una perilla.
+
+### E9. Herramientas distractoras
+
+El runner corre sin las herramientas de M1 y M2 —calculadora, lector de archivos,
+cifrado César— y el comentario que justifica esa decisión en el código afirmaba
+que en la sala de escape "son distractores que no resuelven nada, ocupan contexto
+en cada llamada y ensucian la medición". Era una afirmación plausible que nadie
+había medido.
+
+Con 50 corridas por rama, agregarlas dio 39 de 50 contra 36 de 50 sin ellas
+(p = 0,645), con un consumo de tokens de entrada prácticamente idéntico: 65.888
+contra 61.494 de mediana, un 7 % más.
+
+**El efecto es nulo y el comentario del código estaba mal**, así que se corrigió.
+Tres herramientas irrelevantes en el catálogo no distraen a Nova Lite ni le
+cuestan contexto de forma apreciable. La decisión de excluirlas sigue siendo
+razonable por higiene experimental —una condición menos que explicar—, pero no
+por el motivo que se había escrito.
+
+### Lectura conjunta de los nueve experimentos
 
 | Intervención | Efecto sobre la tasa de éxito |
 | :---- | :---- |
-| **Reemplazar llama3.1 por Nova Lite** | **25 % → 78,7 %** |
+| **Reemplazar llama3.1 por Nova Lite** | **25 % → 70 %**, sin tocar una línea del framework |
+| **E7, reflexión ante un ciclo detectado** | **75,7 % → 84,3 % (p = 0,0105)** |
 | E1, recortar la ventana de contexto | Negativo y monótono en ambas campañas |
 | E2, prompt especializado | Decisivo con llama3.1, nulo con Nova Lite |
 | E3, memoria episódica de acciones | Nulo, con 52 % más de tokens |
-| E4, ampliar el presupuesto de iteraciones | Nulo sobre el conjunto completo |
+| E4, ampliar el presupuesto de iteraciones | Solo importa el contraste extremo, 25 contra 100 |
 | E5, bloquear repeticiones estériles | Negativo, de 80 % a 70 % |
 | E6, planificador explícito | Nulo, dos puntos dentro del error |
+| E8, temperatura del modelo | Nulo en 0,2, 0,5 y 0,9 |
+| E9, herramientas distractoras | Nulo, y refuta un comentario del propio código |
 
-Las decisiones de M2 sí importan, una ventana demasiado chica hunde al agente por
-completo en las dos campañas. Pero una vez que la configuración se encuentra en un
-régimen razonable, seguir ajustando el framework no movió el resultado de forma
-apreciable, y la intervención que sí produjo un cambio grande y consistente fue
-reemplazar el modelo subyacente.
+Tres lecturas salen de la tabla, y ninguna de las tres se ve mirando un
+experimento por separado.
 
-Conviene además señalar lo que E1 y E2 muestran en conjunto, porque es una
-conclusión que ninguno de los dos permite por separado: **el efecto de una
-intervención de framework depende del modelo sobre el que se mide, al punto de
-poder invertirse.** Un informe que hubiera evaluado únicamente con llama3.1 habría
-concluido que el prompt especializado es una pieza crítica del sistema y que
-quitarle memoria al agente reduce sus repeticiones. Las dos conclusiones son
-falsas con el modelo que exige la consigna.
+**Primera: el modelo domina, pero no agota el problema.** Cambiar de modelo movió
+45 puntos y ninguna intervención de framework se le acerca. Durante buena parte
+del trabajo eso pareció ser toda la historia, porque seis experimentos seguidos
+dieron nulo o negativo. E7 muestra que la conclusión fuerte —que el framework ya
+no tenía nada que aportar— era prematura: había 8,7 puntos disponibles, y estaban
+donde la instrumentación decía que estaban.
+
+**Segunda: la diferencia entre E5 y E7 es el método, no la idea.** Los dos
+intervienen sobre el mismo modo de fallo con la misma hipótesis de fondo, y dan
+resultados opuestos. E5 eligió su disparador por intuición —"si repite, frenalo"—
+y resultó que repetir es lo que hacen también las corridas sanas. E7 eligió el
+suyo barriendo parámetros contra 180 trazas ya guardadas hasta encontrar uno que
+separara. El experimento que funcionó es el que se diseñó con datos, y el dato
+que hizo falta ya estaba grabado desde antes de que existiera la hipótesis. Es la
+justificación más concreta de todo el aparato de instrumentación que ocupa la
+sección 2.
+
+**Tercera: el efecto de una intervención depende del modelo sobre el que se
+mide, al punto de poder invertirse.** Es lo que E1 y E2 muestran en conjunto y
+ninguno de los dos por separado. Un informe que hubiera evaluado únicamente con
+llama3.1 habría concluido que el prompt especializado es una pieza crítica del
+sistema y que quitarle memoria al agente reduce sus repeticiones. Las dos
+conclusiones son falsas con el modelo que exige la consigna.
+
+Conviene además dejar registrado el saldo honesto: de las ocho intervenciones de
+framework probadas, **una mejoró el resultado, dos lo empeoraron y cinco no lo
+movieron**. Los nulos no son experimentos fallidos; E8 refutó una hipótesis
+específica que habíamos escrito con confianza, y E9 obligó a corregir una
+afirmación que el código venía haciendo sin respaldo. Un experimento cuya
+hipótesis se cumple confirma lo que ya se creía; uno que la refuta enseña algo.
 
 ---
 
 ## 5. Limitaciones y próximos pasos
 
 * Ningún escenario alcanza el 100 % sobre las repeticiones medidas, es decir,
-  medido como pass^k, ningún escenario es todavía perfectamente confiable. La
-  causa dominante identificada, el bucle, no es un defecto del framework sino una
-  limitación de razonamiento del modelo sobre información que ya tiene disponible,
-  y así lo sugieren de forma convergente E3, que le dio el dato de manera
-  explícita, E5, que le impidió repetirlo, y E6, que le dio un plan. Ninguna de
-  las tres intervenciones cambió el resultado.
+  medido como pass^k, ningún escenario es todavía perfectamente confiable. El
+  bucle sigue siendo la causa dominante y solo se lo mitigó parcialmente: E7 lo
+  redujo lo suficiente como para mover la tasa de éxito 8,7 puntos, pero el
+  16 % restante de fracasos sigue siendo bucle. Darle el dato de forma explícita
+  (E3), impedirle repetir (E5) o darle un plan de antemano (E6) no funcionó;
+  lo único que funcionó fue interrumpirlo en el momento correcto, y aun así el
+  agente vuelve a ciclar en una de cada seis corridas.
 
-* El juez no fue calibrado. No existe un golden set de trazas etiquetadas por
-  humanos contra el cual se haya medido el acuerdo del juez con un coeficiente
-  corregido por azar, como recomienda la materia. Sus dimensiones de calidad deben
-  leerse como señal comparativa entre condiciones, no como una medición absoluta.
+* El juez no fue calibrado contra anotación humana. El instrumental está
+  construido —muestra estratificada de 40 trazas, cuadernillo con el texto
+  exacto que recibió el juez, y kappa de Cohen con pesos cuadráticos, en
+  `eval/calibracion.py`— pero el etiquetado no se completó a tiempo para esta
+  entrega, así que no hay un coeficiente de acuerdo que reportar. Sus
+  dimensiones deben seguir leyéndose como señal comparativa entre condiciones y
+  no como medición absoluta.
+
+* Hay evidencia de que la rúbrica del juez no separa lo que dice separar. Sobre
+  las 349 trazas juzgadas, las tres dimensiones correlacionan **entre sí** con
+  r entre 0,74 y 0,85, bastante más de lo que cada una correlaciona con el éxito
+  de la corrida, entre 0,49 y 0,66. Es el patrón característico del efecto halo:
+  el juez emite un juicio global de "esta traza se ve bien" y lo reparte en tres
+  casilleros que se presentan como independientes. Cada dimensión discrimina
+  éxito de fracaso razonablemente bien por separado —área bajo la curva de 0,79 a
+  0,88— pero tratarlas como tres mediciones distintas sobrestima cuánta
+  información aportan.
 
 * El juez comparte modelo con el agente evaluado en ambas campañas, lo que
   mantiene el riesgo de self preference que la materia señala. En la campaña con
@@ -898,23 +1166,41 @@ falsas con el modelo que exige la consigna.
 
 * El modelo no se aisló por completo como variable. Se compararon dos modelos de
   familias y capacidades muy distintas, llama3.1 de 8B en local contra Nova Lite
-  sobre Bedrock, pero no se probó un modelo de mayor capacidad dentro de la misma
-  familia, lo que permitiría separar con más precisión qué parte del techo
-  observado corresponde al framework y qué parte al modelo. Dado el peso que el
-  modelo demostró tener en los resultados, esta es probablemente la limitación más
-  importante del trabajo.
+  sobre Bedrock, pero no se probó un tercer modelo dentro de la misma familia,
+  lo que permitiría separar con más precisión qué parte del techo observado
+  corresponde al framework y qué parte al modelo. Dado el peso que el modelo
+  demostró tener, es probablemente la limitación más importante del trabajo.
+
+  **Se intentó y quedó bloqueado por permisos, no por presupuesto.** Nova Micro,
+  Nova Pro y Nova 2 Lite figuran como disponibles en la cuenta, pero ninguno
+  admite invocación on demand con el identificador directo: todos exigen un
+  perfil de inferencia entre regiones, esos perfiles rutean a `us-west-2`, y el
+  rol de SSO del curso tiene un deny explícito fuera de `us-east-2`. Se probaron
+  los tres modelos con el identificador pelado y con los prefijos `us.` y
+  `global.`, y los seis intentos fallan con `AccessDeniedException`. Habilitar
+  `bedrock:InvokeModel` fuera de `us-east-2` sería suficiente para correr el
+  experimento tal como está escrito.
 
 * La varianza del sistema es alta y quedó documentada de forma directa: la misma
-  configuración, medida tres veces con cincuenta repeticiones cada una, arrojó
-  80 %, 80 % y 76 %. Con menos repeticiones por celda las diferencias son
-  fácilmente confundibles con ruido, y E4 es el caso testigo de ese riesgo dentro
-  de este mismo informe.
+  configuración, medida en seis brazos de control independientes de cincuenta
+  repeticiones cada uno, arrojó 80 %, 80 %, 78 %, 76 %, 72 % y 68 %. Los seis son
+  homogéneos entre sí, así que esa dispersión de doce puntos es la que produce el
+  azar binomial y no una diferencia de condiciones, pero conviene tenerla presente
+  al leer cualquier comparación de una sola tanda contra otra. E4 es el caso
+  testigo de ese riesgo dentro de este informe, y el brazo de control de E7, que
+  cayó en 68 %, estuvo a punto de producir un titular exagerado que solo se
+  desarmó al agrupar los seis.
 
-* Como próximos pasos, los dos más prometedores son la calibración del juez contra
-  un golden set humano, que es requisito para poder confiar en las dimensiones de
-  conducta como medición y no solo como señal comparativa, y la evaluación sobre
-  un tercer modelo de capacidad intermedia, que permitiría estimar dónde está el
-  techo del framework con independencia del modelo.
+* Como próximos pasos, los tres más prometedores son completar la calibración del
+  juez con el instrumental ya construido, que es requisito para poder confiar en
+  las dimensiones de conducta como medición; conseguir el permiso que habilite un
+  tercer modelo; y explorar el espacio de disparadores de E7, del que se probó un
+  único punto. El barrido de la ventana y el umbral se hizo para maximizar
+  separación entre corridas exitosas y fallidas, no para maximizar la tasa de
+  éxito final, y no hay ninguna garantía de que el óptimo de una cosa lo sea de
+  la otra. También quedó sin probar qué pasa si la reflexión se dispara más de
+  una vez por episodio de ciclo, o si el texto del aviso importa tanto como su
+  momento.
 
 ---
 

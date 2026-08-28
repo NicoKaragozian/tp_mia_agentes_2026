@@ -348,9 +348,59 @@ def fig_juez() -> None:
     )
 
 
+#: Campañas cuyo brazo baseline entra en la estimación agrupada del control.
+#: Son homogéneas entre sí (chi cuadrado 3,13 sobre 5 grados de libertad), que
+#: es la condición que habilita a tratarlas como una sola muestra.
+_BRAZOS_BASELINE = (
+    "nova-final", "e5-bloqueo", "e6-planner",
+    "e7-reflexion", "e9-distractores", "e8-temperatura",
+)
+
+#: Los cinco escenarios obligatorios; los extreme no entran en los experimentos.
+_CINCO = (
+    "study-with-key", "color-locks", "apartment-keys",
+    "library-search", "office-sequence",
+)
+
+
+def _pooled_condicion(campanias, condicion) -> tuple[int, int]:
+    """Éxitos y total de una condición agrupando varias campañas.
+
+    Suma sobre `por_condicion_escenario`, restringido a los cinco escenarios
+    obligatorios, para que agregar una campaña que corrió otros escenarios no
+    cambie el número en silencio.
+    """
+    exitos = total = 0
+    for campania in campanias:
+        por = _resumen(campania).get("por_condicion_escenario", {})
+        for escenario, datos in por.get(condicion, {}).items():
+            if escenario in _CINCO:
+                exitos += datos["exitos"]
+                total += datos["n"]
+    return exitos, total
+
+
+def fig_e7_reflexion() -> None:
+    """El único efecto positivo establecido del trabajo. (E7)"""
+    be, bn = _pooled_condicion(_BRAZOS_BASELINE, "baseline")
+    te, tn = _pooled_condicion(("e7-reflexion", "e7-ampliacion"), "con_reflexion")
+    if not bn or not tn:
+        raise KeyError("faltan resúmenes de E7 o de los brazos baseline")
+    barras_horizontales(
+        DESTINO / "e7-reflexion.svg",
+        "E7 · reflexión al detectar un ciclo improductivo",
+        f"Nova Lite · {bn} corridas de control contra {tn} con reflexión · p = 0,0105",
+        [f"baseline ({be}/{bn})", f"con reflexión ({te}/{tn})"],
+        [100 * be / bn, 100 * te / tn],
+        [f"{100 * be / bn:.1f} %".replace(".", ","),
+         f"{100 * te / tn:.1f} %".replace(".", ",")],
+    )
+
+
 def main() -> int:
     DESTINO.mkdir(parents=True, exist_ok=True)
-    figuras = (fig_exito_por_escenario, fig_eficiencia, fig_e1_memoria, fig_juez)
+    figuras = (fig_exito_por_escenario, fig_eficiencia, fig_e1_memoria,
+               fig_juez, fig_e7_reflexion)
     fallidas: list[str] = []
     for fn in figuras:
         antes = {p.name for p in DESTINO.glob("*.svg")}

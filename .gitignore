@@ -19,3 +19,7 @@ eval/results/**/*__*.json
 .env.*
 !.env.example
 .aws/
+
+# Material de calibración del juez: se regenera con `python eval/calibracion.py`.
+# El cuadernillo pesa 128K y la plantilla vacía no aporta nada versionada.
+docs/calibracion/

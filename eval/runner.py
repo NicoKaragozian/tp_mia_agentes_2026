@@ -95,14 +95,22 @@ def ejecutar_caso(
     escenario = _escenario(escenario_id)
     mundo = escenario.initial_world
 
-    grabador = ClienteGrabador(cliente if cliente is not None else LLMClient.from_env())
+    # `temperatura` no es un parámetro del agente sino del cliente, así que se
+    # saca de los overrides antes de armar la config de `build_agent`.
+    overrides = dict(condicion.overrides)
+    temperatura = overrides.pop("temperatura", None)
+
+    grabador = ClienteGrabador(
+        cliente if cliente is not None else LLMClient.from_env(),
+        temperatura=temperatura,
+    )
     config: dict[str, Any] = {
         "llm_client": grabador,
         "max_iterations": presupuesto_iteraciones(escenario_id),
         # Sin las tools de M1/M2: en la sala de escape son distractores que
         # no resuelven nada y ocupan contexto en cada llamada.
         "tools_por_defecto": False,
-        **condicion.overrides,
+        **overrides,
     }
     agente = build_agent(config)
     for fn, schema in make_world_tools(mundo):

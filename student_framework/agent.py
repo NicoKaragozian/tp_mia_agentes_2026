@@ -30,6 +30,13 @@ from mia_agents.protocols import LLMClient
 from mia_agents.tool_schema import FINAL_RESULT_TOOL_NAME, final_result_tool_schema
 from mia_agents.types import AgentResult, AgentStep, LLMResponse, ToolCall, ToolSchema
 
+from student_framework.ciclos import (
+    VENTANA_CICLO,
+    Accion,
+    hay_ciclo,
+    resumen_del_ciclo,
+)
+
 _T = TypeVar("_T")
 
 #: Códigos HTTP que se consideran transitorios: timeout del servidor,
@@ -174,6 +181,7 @@ class MyAgent:
         memoria_de_acciones: bool = False,
         bloquear_repeticiones: bool = False,
         planificar: bool = False,
+        reflexionar: bool = False,
     ) -> None:
         """Inicializa el agente.
 
@@ -212,6 +220,11 @@ class MyAgent:
             de sub-objetivos con `structured_call` y lo mantiene en el system
             prompt durante toda la corrida. Ver `_preparar_plan`.
             Apagado por defecto.
+        reflexionar : bool
+            Si es `True`, cuando el agente entra en un ciclo improductivo se
+            le inyecta un turno de reflexión que nombra lo que está
+            repitiendo y le pide cambiar de estrategia. Ver
+            `_aviso_de_reflexion`. Apagado por defecto.
         """
         # Validación de la configuración. El caso interesante es
         # `max_history_messages`: un tope de 0 (o negativo) es CONTRADICTORIO
@@ -241,6 +254,14 @@ class MyAgent:
         self._memoria_de_acciones = memoria_de_acciones
         self._bloquear_repeticiones = bloquear_repeticiones
         self._planificar = planificar
+        self._reflexionar = reflexionar
+        #: Acciones en el orden en que se ejecutaron. `_acciones` las indexa
+        #: por identidad y pierde el orden; la detección de ciclos necesita
+        #: la secuencia, porque lo que la delata es la ventana reciente.
+        self._historial_acciones: list[Accion] = []
+        #: Largo del historial en la última reflexión, para no repetirla en
+        #: cada paso mientras dura el ciclo.
+        self._ultima_reflexion: int = -VENTANA_CICLO
         #: Bloque de texto del plan vigente, o "" si no se planificó.
         self._plan_texto: str = ""
         #: (herramienta, argumentos) -> [veces, desenlace resumido]
@@ -377,6 +398,10 @@ class MyAgent:
                     }
                 )
 
+            aviso = self._aviso_de_reflexion()
+            if aviso:
+                self._history.append({"role": "user", "content": aviso})
+
         # Se agotó `max_iterations` sin una respuesta de texto final. Aun así
         # devolvemos un `AgentResult` válido. `answer` no queda vacío (M2 lo
         # exige): explica el corte y qué se alcanzó a hacer, mientras `error`
@@ -458,6 +483,11 @@ class MyAgent:
         Es el modo de fallo dominante que medimos: 4 de 6 fracasos con Nova
         Lite fueron `look()` repetido entre 21 y 48 veces.
         """
+        # La secuencia ordenada se lleva siempre: es barata (dos strings por
+        # paso) y es lo único que permite detectar un ciclo, que depende del
+        # orden y no de la identidad de las acciones.
+        self._historial_acciones.append((call.name, (call.arguments or "").strip()))
+
         if not (self._memoria_de_acciones or self._bloquear_repeticiones):
             return False
         texto = error or salida or ""
@@ -478,6 +508,42 @@ class MyAgent:
         # marca se levanta: dejó de ser estéril.
         anterior[3] = improductiva
         return improductiva
+
+    def _aviso_de_reflexion(self) -> str:
+        """Turno de reflexión a inyectar, o "" si no corresponde.
+
+        Se dispara cuando la ventana reciente de acciones deja de tener
+        diversidad (ver `student_framework.ciclos`), y no vuelve a dispararse
+        hasta que hayan pasado otras `VENTANA_CICLO` acciones: mientras dura
+        un ciclo la condición sigue siendo verdadera en cada paso, y repetir
+        el aviso veinte veces seguidas lo convertiría en ruido que el modelo
+        aprende a ignorar.
+
+        El aviso nombra lo que se está repitiendo en lugar de decir "estás en
+        un bucle" a secas. La diferencia importa: con el aviso genérico el
+        modelo todavía tiene que descubrir cuáles son las acciones estériles,
+        que es justamente lo que ya demostró no saber hacer.
+        """
+        if not self._reflexionar:
+            return ""
+        if len(self._historial_acciones) - self._ultima_reflexion < VENTANA_CICLO:
+            return ""
+        if not hay_ciclo(self._historial_acciones):
+            return ""
+
+        self._ultima_reflexion = len(self._historial_acciones)
+        repetidas = resumen_del_ciclo(self._historial_acciones)
+        return (
+            "[PAUSA DEL SISTEMA] Tus últimas "
+            f"{VENTANA_CICLO} acciones casi no tienen variedad: {repetidas}. "
+            "Repetirlas no está aportando información nueva y vas camino a "
+            "agotar el presupuesto de iteraciones.\n\n"
+            "Antes de actuar de nuevo, respondé para vos mismo:\n"
+            "1. ¿Qué información ya obtuviste y todavía no usaste?\n"
+            "2. ¿Qué objeto, dirección o herramienta NO probaste todavía?\n"
+            "3. ¿Qué suposición estás dando por cierta sin haberla verificado?\n\n"
+            "Ahora elegí una acción que NO esté en la lista de repetidas."
+        )
 
     #: Aviso que se adjunta al resultado cuando una acción no aportó nada.
     _AVISO_IMPRODUCTIVA = (

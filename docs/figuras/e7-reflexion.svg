@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 380" width="720" height="380" font-family="Helvetica, Arial, sans-serif">
+<rect width="720" height="380" fill="#ffffff"/>
+<text x="40" y="26" font-size="15" font-weight="600" fill="#1b2432">E7 · reflexión al detectar un ciclo improductivo</text>
+<text x="40" y="42" font-size="11" fill="#8894a6">Nova Lite · 300 corridas de control contra 300 con reflexión · p = 0,0105</text>
+<line x1="190.0" y1="46" x2="190.0" y2="328.0" stroke="#d8dee6" stroke-width="1"/>
+<text x="190.0" y="362.0" font-size="10" fill="#8894a6" text-anchor="middle">0%</text>
+<line x1="300.5" y1="46" x2="300.5" y2="328.0" stroke="#d8dee6" stroke-width="1"/>
+<text x="300.5" y="362.0" font-size="10" fill="#8894a6" text-anchor="middle">25%</text>
+<line x1="411.0" y1="46" x2="411.0" y2="328.0" stroke="#d8dee6" stroke-width="1"/>
+<text x="411.0" y="362.0" font-size="10" fill="#8894a6" text-anchor="middle">50%</text>
+<line x1="521.5" y1="46" x2="521.5" y2="328.0" stroke="#d8dee6" stroke-width="1"/>
+<text x="521.5" y="362.0" font-size="10" fill="#8894a6" text-anchor="middle">75%</text>
+<line x1="632.0" y1="46" x2="632.0" y2="328.0" stroke="#d8dee6" stroke-width="1"/>
+<text x="632.0" y="362.0" font-size="10" fill="#8894a6" text-anchor="middle">100%</text>
+<text x="180" y="120.5" font-size="11.5" fill="#1b2432" text-anchor="end">baseline (227/300)</text>
+<rect x="190" y="101.5" width="334.4" height="30.0" fill="#2b4c7e" rx="2"/>
+<text x="532.4" y="120.5" font-size="11" fill="#1b2432">75,7 %</text>
+<text x="180" y="261.5" font-size="11.5" fill="#1b2432" text-anchor="end">con reflexión (253/300)</text>
+<rect x="190" y="242.5" width="372.8" height="30.0" fill="#a6392f" rx="2"/>
+<text x="570.8" y="261.5" font-size="11" fill="#1b2432">84,3 %</text>
+</svg>

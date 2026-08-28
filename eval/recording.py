@@ -61,8 +61,12 @@ class ClienteGrabador:
     que el agente no puede distinguirlo del cliente real.
     """
 
-    def __init__(self, interno: Any) -> None:
+    def __init__(self, interno: Any, temperatura: float | None = None) -> None:
         self._interno = interno
+        #: Si viene, pisa la temperatura que pida el agente. La temperatura es
+        #: un parámetro del cliente, no del agente, así que variarla desde acá
+        #: evita tocar `MyAgent` para un experimento que no es sobre el agente.
+        self._temperatura = temperatura
         self.llamadas: list[LlamadaLLM] = []
         #: Mensajes de la última llamada, ya recortados por la ventana.
         self.ultimo_contexto: list[dict[str, Any]] = []
@@ -103,7 +107,9 @@ class ClienteGrabador:
                 messages=messages,
                 tools=tools,
                 system=system,
-                temperature=temperature,
+                temperature=(
+                    self._temperatura if self._temperatura is not None else temperature
+                ),
                 response_format=response_format,
             )
         except Exception as exc:  # se graba y se re-lanza: el agente decide

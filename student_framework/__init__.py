@@ -42,6 +42,7 @@ def build_agent(config: dict[str, Any] | None = None) -> Agent:
         "memoria_de_acciones",
         "bloquear_repeticiones",
         "planificar",
+        "reflexionar",
     ):
         if clave in config:
             kwargs[clave] = config[clave]
@@ -53,10 +54,15 @@ def build_agent(config: dict[str, Any] | None = None) -> Agent:
     # NO requiere tocar este archivo (ver student_framework/tools/__init__.py).
     #
     # `tools_por_defecto=False` devuelve el agente sin ninguna herramienta,
-    # para que quien lo construye registre solo las del dominio. Lo pide la
+    # para que quien lo construye registre solo las del dominio. Lo usa la
     # evaluación del M3: al correr la sala de escape, las tools de M1/M2
-    # (calculadora, lector, contador de palabras) son distractores que no
-    # resuelven nada, ocupan contexto en cada llamada y ensucian la medición.
+    # (calculadora, lector, contador de palabras) no resuelven nada.
+    #
+    # Una versión anterior de este comentario afirmaba además que distraen al
+    # modelo y le cuestan contexto. E9 lo midió y es falso: con 50 corridas por
+    # rama, agregarlas dio 39/50 contra 36/50 sin ellas (p = 0,65), con un 7 %
+    # más de tokens de entrada. Se las excluye por higiene experimental, una
+    # condición menos que explicar, y no porque perjudiquen.
     # El valor por defecto es `True`, así que el comportamiento de M1/M2 y de
     # `mia_world.cli` no cambia.
     if config.get("tools_por_defecto", True):

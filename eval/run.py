@@ -79,10 +79,27 @@ def _parser() -> argparse.ArgumentParser:
         help=f"Ids a evaluar (por defecto los {len(ORDEN_ESCENARIOS)}).",
     )
     p.add_argument(
+        "--condicion",
+        default=None,
+        help=(
+            "Corre solo esta condición del experimento. Sirve para ampliar un "
+            "brazo sin volver a pagar los demás."
+        ),
+    )
+    p.add_argument(
         "--repeticiones",
         type=int,
         default=3,
         help="Corridas por caso; el LLM es estocástico (defecto: 3).",
+    )
+    p.add_argument(
+        "--desde",
+        type=int,
+        default=0,
+        help=(
+            "Primera repetición a correr. Sirve para retomar una campaña "
+            "interrumpida sin volver a pagar las que ya se hicieron."
+        ),
     )
     p.add_argument(
         "--smoke",
@@ -108,6 +125,13 @@ def main(argv: list[str] | None = None) -> int:
 
     escenarios = args.escenarios or ORDEN_ESCENARIOS
     condiciones = EXPERIMENTOS[args.experimento] if args.experimento else [BASELINE]
+    if args.condicion:
+        condiciones = [c for c in condiciones if c.nombre == args.condicion]
+        if not condiciones:
+            raise SystemExit(
+                f"No existe la condición {args.condicion!r} en "
+                f"{args.experimento or 'baseline'}."
+            )
     repeticiones = args.repeticiones
     if args.smoke:
         escenarios, condiciones, repeticiones = ["study-with-key"], [BASELINE], 1
@@ -118,7 +142,7 @@ def main(argv: list[str] | None = None) -> int:
     destino = Path(args.salida) if args.salida else DIR_RESULTADOS / f"{etiqueta}-{marca}"
     destino.mkdir(parents=True, exist_ok=True)
 
-    total = len(escenarios) * len(condiciones) * repeticiones
+    total = len(escenarios) * len(condiciones) * max(0, repeticiones - args.desde)
     print(f"# {etiqueta}: {total} corridas | modelo: {modelo}")
     print(f"# resultados -> {destino}\n")
 
@@ -127,7 +151,7 @@ def main(argv: list[str] | None = None) -> int:
     fallos_seguidos = 0
     for condicion in condiciones:
         for escenario in escenarios:
-            for rep in range(repeticiones):
+            for rep in range(args.desde, repeticiones):
                 hecho += 1
                 print(
                     f"[{hecho}/{total}] {condicion.nombre} · {escenario} · rep {rep}",
@@ -147,6 +171,22 @@ def main(argv: list[str] | None = None) -> int:
                         f"seguidos. Suele ser la sesión del proveedor vencida "
                         f"(`aws sso login`). Último error:\n"
                         f"{(traza.fallo_infra or '').strip().splitlines()[-1]}"
+                    )
+                    # Antes de salir se agrega lo que YA se midió. Abortar sin
+                    # guardar deja el directorio con los JSON por caso pero sin
+                    # `trazas.json` ni `summary.json`, y una campaña de horas
+                    # queda inutilizable hasta que alguien la reconstruya a
+                    # mano. Las corridas ya están pagas: perderlas es el peor
+                    # desenlace posible de una interrupción.
+                    parcial = [t.como_dict() for t in trazas]
+                    (destino / "trazas.json").write_text(
+                        json.dumps(parcial, indent=2, ensure_ascii=False),
+                        encoding="utf-8",
+                    )
+                    escribir(destino, parcial)
+                    print(
+                        f"Se guardaron las {len(parcial)} corridas ya hechas en "
+                        f"{destino} (parcial)."
                     )
                     raise SystemExit(2)
                 marca_meta = "OK " if traza.meta_lograda else "fail"

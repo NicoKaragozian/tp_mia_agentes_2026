@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import statistics
 from dataclasses import dataclass
+from math import comb
 from typing import Any, Iterable
 
 from eval.analysis import fraccion_repetidas
@@ -131,3 +132,38 @@ def agrupar_por(
     for t in trazas:
         grupos.setdefault(str(t.get(clave)), []).append(t)
     return {k: resumir(v) for k, v in sorted(grupos.items())}
+
+
+# --- confiabilidad: pass@k y pass^k ------------------------------------------
+
+
+def pass_at_k(n: int, exitos: int, k: int) -> float:
+    """Probabilidad de que al menos uno de `k` intentos llegue a la meta.
+
+    Estimador insesgado `1 - C(n-e, k) / C(n, k)`, el mismo que usa la
+    literatura de generación de código. Responde "¿sirve si lo reintento?".
+
+    Ojo con el caso degenerado: si `n - exitos < k` no quedan suficientes
+    fracasos para formar una muestra de k que falle entera, y el estimador
+    devuelve 1,0 por construcción. Con n = 10 el valor de `pass@10` no dice
+    nada sobre el sistema, solo que en esas diez corridas hubo algún éxito.
+    """
+    if not 0 <= exitos <= n or k < 1:
+        raise ValueError("n, exitos y k inconsistentes")
+    if n - exitos < k:
+        return 1.0
+    return 1.0 - comb(n - exitos, k) / comb(n, k)
+
+
+def pass_pow_k(n: int, exitos: int, k: int) -> float:
+    """Probabilidad de que `k` intentos acierten **todos**.
+
+    Estimador `C(e, k) / C(n, k)`. Responde "¿puedo confiar en él?", que es
+    una pregunta bastante más dura que la de `pass_at_k` y la que importa si
+    el agente va a correr sin nadie mirando.
+    """
+    if not 0 <= exitos <= n or k < 1:
+        raise ValueError("n, exitos y k inconsistentes")
+    if exitos < k:
+        return 0.0
+    return comb(exitos, k) / comb(n, k)

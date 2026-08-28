@@ -10,6 +10,9 @@ from __future__ import annotations
 
 import pytest
 
+from eval.bucle import detectar_ciclo, primera_repeticion
+from eval.calibracion import kappa_ponderado, muestrear, spearman
+from eval.metrics import pass_at_k, pass_pow_k
 from eval.analysis import (
     clasificar,
     fraccion_repetidas,
@@ -368,3 +371,144 @@ def test_desborde_no_se_marca_con_el_techo_de_otro_proveedor():
     assert "desborde_contexto" not in clasificar(
         {**base, "modelo": "bedrock:amazon.nova-lite-v1:0"}
     )
+
+
+# --- deteccion de ciclos improductivos ---------------------------------------
+
+
+def _pasos(acciones):
+    """Arma una lista de pasos a partir de nombres de herramienta."""
+    return [
+        {"indice": i, "herramienta": a, "argumentos": "{}", "salida": "", "error": None}
+        for i, a in enumerate(acciones)
+    ]
+
+
+def test_primera_repeticion_encuentra_el_indice():
+    pasos = _pasos(["look", "examine", "take", "look"])
+    assert primera_repeticion(pasos) == 3
+
+
+def test_primera_repeticion_none_si_todo_es_distinto():
+    assert primera_repeticion(_pasos(["look", "examine", "take"])) is None
+
+
+def test_detectar_ciclo_ignora_una_repeticion_aislada():
+    """Una repetición suelta no es un ciclo: el 65 % de las corridas que
+    repiten alguna vez igual llegan a la meta."""
+    pasos = _pasos(["look", "a", "b", "look"] + [f"t{i}" for i in range(20)])
+    assert detectar_ciclo(pasos) is None
+
+
+def test_detectar_ciclo_dispara_con_repeticion_sostenida():
+    """Veinte pasos alternando entre dos acciones son media docena de
+    acciones distintas sobre veinte: muy por debajo del umbral."""
+    pasos = _pasos([f"t{i}" for i in range(10)] + ["a", "b"] * 10)
+    indice = detectar_ciclo(pasos)
+    assert indice is not None and indice >= 10
+
+
+def test_detectar_ciclo_no_dispara_si_la_corrida_es_corta():
+    assert detectar_ciclo(_pasos(["a"] * 5)) is None
+
+
+def test_detectar_ciclo_rechaza_ventana_invalida():
+    with pytest.raises(ValueError):
+        detectar_ciclo(_pasos(["a"] * 30), ventana=0)
+
+
+# --- pass@k y pass^k ---------------------------------------------------------
+
+
+def test_pass_at_k_crece_con_los_intentos():
+    """Reintentar solo puede ayudar."""
+    valores = [pass_at_k(30, 20, k) for k in (1, 2, 3, 5)]
+    assert valores == sorted(valores)
+    assert valores[0] == pytest.approx(20 / 30)
+
+
+def test_pass_pow_k_decrece_con_los_intentos():
+    """Exigir k aciertos seguidos solo puede costar más."""
+    valores = [pass_pow_k(30, 20, k) for k in (1, 2, 3, 5)]
+    assert valores == sorted(valores, reverse=True)
+    assert valores[0] == pytest.approx(20 / 30)
+
+
+def test_pass_at_k_degenera_cuando_no_quedan_fracasos():
+    """Con n=10 y un solo éxito, pass@10 es 1,0 por construcción."""
+    assert pass_at_k(10, 1, 10) == 1.0
+    assert pass_at_k(10, 1, 5) == pytest.approx(0.5)
+
+
+def test_pass_pow_k_es_cero_si_faltan_exitos():
+    assert pass_pow_k(10, 2, 3) == 0.0
+
+
+def test_pass_k_rechaza_argumentos_imposibles():
+    with pytest.raises(ValueError):
+        pass_at_k(10, 11, 1)
+    with pytest.raises(ValueError):
+        pass_pow_k(10, 5, 0)
+
+
+# --- calibracion del juez ----------------------------------------------------
+
+
+def test_kappa_acuerdo_perfecto():
+    a = [1, 2, 3, 4, 5, 3, 2]
+    assert kappa_ponderado(a, a) == pytest.approx(1.0)
+
+
+def test_kappa_penaliza_menos_los_errores_chicos():
+    """Es ponderado justamente para esto: confundir 4 con 5 no es lo mismo
+    que confundir 1 con 5."""
+    base = [1, 2, 3, 4, 5, 1, 5, 2]
+    cerca = [1, 2, 3, 5, 5, 1, 5, 2]
+    lejos = [1, 2, 3, 4, 1, 1, 1, 2]
+    assert kappa_ponderado(base, cerca) > kappa_ponderado(base, lejos)
+
+
+def test_kappa_rechaza_listas_incompatibles():
+    with pytest.raises(ValueError):
+        kappa_ponderado([1, 2], [1])
+    with pytest.raises(ValueError):
+        kappa_ponderado([], [])
+
+
+def test_spearman_monotono_da_uno():
+    assert spearman([1, 2, 3, 4], [10, 20, 30, 40]) == pytest.approx(1.0)
+    assert spearman([1, 2, 3, 4], [40, 30, 20, 10]) == pytest.approx(-1.0)
+
+
+def test_spearman_promedia_empates():
+    """Sin promediar los empates el coeficiente queda mal definido."""
+    assert spearman([1, 1, 2, 2], [1, 1, 2, 2]) == pytest.approx(1.0)
+
+
+def test_muestreo_es_reproducible():
+    """La semilla es fija: regenerar el material no puede cambiar el conjunto."""
+    trazas = [
+        {"escenario": f"e{i % 4}", "meta_lograda": i % 3 == 0, "_origen": str(i),
+         "juez": {}}
+        for i in range(60)
+    ]
+    assert [t["_origen"] for t in muestrear(trazas, 12)] == [
+        t["_origen"] for t in muestrear(trazas, 12)
+    ]
+
+
+def test_kappa_falla_si_ningun_anotador_vario():
+    """Dos anotadores que ponen siempre la misma nota coinciden POR azar.
+
+    El estadístico es 0/0 ahí. Devolver 1,0 afirmaría acuerdo perfecto por
+    encima del azar donde no hay nada por encima del azar, y devolver 0,0
+    disfrazaría de medición un caso sin información.
+    """
+    with pytest.raises(ValueError, match="indefinido"):
+        kappa_ponderado([3] * 10, [3] * 10)
+
+
+def test_kappa_no_falla_si_alguno_vario():
+    """El caso degenerado es estrecho: alcanza con que uno de los dos varíe."""
+    assert kappa_ponderado([3] * 10, [1, 2, 3, 4, 5] * 2) == pytest.approx(0.0)
+    assert kappa_ponderado([3] * 10, [5] * 10) == pytest.approx(0.0)
