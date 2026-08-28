@@ -345,6 +345,29 @@ HIPOTESIS: dict[str, str] = {
         "hipótesis que la diferencia sea nula, lo que indicaría que el cuello "
         "de botella es la capacidad del modelo y no la instrucción."
     ),
+    # AMPLIACIÓN PRE-REGISTRADA de E7, escrita antes de correrla.
+    #
+    # Primera medición: con_reflexion 42/50 (84 %) contra su propio brazo
+    # baseline 34/50 (68 %), p = 0,100. Pero los seis brazos baseline de la
+    # campaña son homogéneos (chi2 = 3,13, gl = 5, crítico 11,07) y agrupan
+    # 227/300 = 75,7 %, así que el 68 % fue una tirada baja y no una condición
+    # distinta. Contra esa estimación, mucho más precisa, la reflexión queda en
+    # +8 puntos con p = 0,276: prometedora y no establecida.
+    #
+    # COMPROMISO: se corren exactamente 250 repeticiones más del brazo
+    # con_reflexion (50 por escenario sobre los cinco obligatorios), llevándolo
+    # de n = 50 a n = 300, y se reporta el resultado agrupado sea cual sea. No
+    # se agregan corridas después de mirar el p-valor, que es lo que
+    # convertiría esto en p-hacking. Si el efecto se desinfla, el nulo con
+    # n = 300 contra n = 300 también es un resultado, y más informativo que el
+    # p = 0,276 de ahora.
+    "e7-ampliacion": (
+        "El efecto de la reflexión se sostiene con más potencia: con_reflexion "
+        "queda por encima del baseline agrupado de 227/300 con p < 0,05. La "
+        "hipótesis alternativa que tomamos en serio es que el 84 % inicial haya "
+        "sido en parte una tirada alta, y que con n = 300 el efecto se achique "
+        "hacia el 76 % del baseline."
+    ),
     "e7-reflexion": (
         "Un turno de reflexión disparado por repetición SOSTENIDA sube la tasa "
         "de éxito respecto del baseline, a diferencia de E5. El disparador "

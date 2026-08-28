@@ -79,6 +79,14 @@ def _parser() -> argparse.ArgumentParser:
         help=f"Ids a evaluar (por defecto los {len(ORDEN_ESCENARIOS)}).",
     )
     p.add_argument(
+        "--condicion",
+        default=None,
+        help=(
+            "Corre solo esta condición del experimento. Sirve para ampliar un "
+            "brazo sin volver a pagar los demás."
+        ),
+    )
+    p.add_argument(
         "--repeticiones",
         type=int,
         default=3,
@@ -108,6 +116,13 @@ def main(argv: list[str] | None = None) -> int:
 
     escenarios = args.escenarios or ORDEN_ESCENARIOS
     condiciones = EXPERIMENTOS[args.experimento] if args.experimento else [BASELINE]
+    if args.condicion:
+        condiciones = [c for c in condiciones if c.nombre == args.condicion]
+        if not condiciones:
+            raise SystemExit(
+                f"No existe la condición {args.condicion!r} en "
+                f"{args.experimento or 'baseline'}."
+            )
     repeticiones = args.repeticiones
     if args.smoke:
         escenarios, condiciones, repeticiones = ["study-with-key"], [BASELINE], 1
