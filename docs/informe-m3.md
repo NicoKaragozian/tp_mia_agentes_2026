@@ -418,9 +418,7 @@ estratificada por escenario y desenlace, cuadernillo que le muestra al anotador
 **el mismo texto que recibió el juez** y nada más, y kappa de Cohen con pesos
 cuadráticos, ponderado porque la rúbrica es ordinal y confundir un 4 con un 5 no
 es el mismo error que confundir un 1 con un 5. Lo que falta es el etiquetado
-humano, que no se hizo: calibrar contra tres anotadores independientes era
-inabordable en el tiempo de esta entrega, y hacerlo con uno solo no habría dado
-un acuerdo interpretable. Queda como la deuda más clara del trabajo.
+humano, que no se hizo: calibrar contra tres anotadores independientes.
 
 Sí se pudo hacer una comprobación más barata que no necesita anotadores, y el
 resultado es incómodo. Sobre las 349 trazas juzgadas, **las tres dimensiones
