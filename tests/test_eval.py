@@ -11,6 +11,7 @@ from __future__ import annotations
 import pytest
 
 from eval.bucle import detectar_ciclo, primera_repeticion
+from eval.calibracion import kappa_ponderado, muestrear, spearman
 from eval.metrics import pass_at_k, pass_pow_k
 from eval.analysis import (
     clasificar,
@@ -448,3 +449,49 @@ def test_pass_k_rechaza_argumentos_imposibles():
         pass_at_k(10, 11, 1)
     with pytest.raises(ValueError):
         pass_pow_k(10, 5, 0)
+
+
+# --- calibracion del juez ----------------------------------------------------
+
+
+def test_kappa_acuerdo_perfecto():
+    a = [1, 2, 3, 4, 5, 3, 2]
+    assert kappa_ponderado(a, a) == pytest.approx(1.0)
+
+
+def test_kappa_penaliza_menos_los_errores_chicos():
+    """Es ponderado justamente para esto: confundir 4 con 5 no es lo mismo
+    que confundir 1 con 5."""
+    base = [1, 2, 3, 4, 5, 1, 5, 2]
+    cerca = [1, 2, 3, 5, 5, 1, 5, 2]
+    lejos = [1, 2, 3, 4, 1, 1, 1, 2]
+    assert kappa_ponderado(base, cerca) > kappa_ponderado(base, lejos)
+
+
+def test_kappa_rechaza_listas_incompatibles():
+    with pytest.raises(ValueError):
+        kappa_ponderado([1, 2], [1])
+    with pytest.raises(ValueError):
+        kappa_ponderado([], [])
+
+
+def test_spearman_monotono_da_uno():
+    assert spearman([1, 2, 3, 4], [10, 20, 30, 40]) == pytest.approx(1.0)
+    assert spearman([1, 2, 3, 4], [40, 30, 20, 10]) == pytest.approx(-1.0)
+
+
+def test_spearman_promedia_empates():
+    """Sin promediar los empates el coeficiente queda mal definido."""
+    assert spearman([1, 1, 2, 2], [1, 1, 2, 2]) == pytest.approx(1.0)
+
+
+def test_muestreo_es_reproducible():
+    """La semilla es fija: regenerar el material no puede cambiar el conjunto."""
+    trazas = [
+        {"escenario": f"e{i % 4}", "meta_lograda": i % 3 == 0, "_origen": str(i),
+         "juez": {}}
+        for i in range(60)
+    ]
+    assert [t["_origen"] for t in muestrear(trazas, 12)] == [
+        t["_origen"] for t in muestrear(trazas, 12)
+    ]
