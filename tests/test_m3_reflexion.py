@@ -149,3 +149,10 @@ def test_la_reflexion_no_rompe_el_contrato_de_run():
     resultado = agente.run("resolvé esto")
     assert resultado.answer
     assert len(resultado.steps) == 60
+
+
+def test_resumen_rechaza_ventana_invalida():
+    """`acciones[-0:]` es la lista entera, no la vacía: sin validar, una
+    ventana de cero haría que el resumen describiera toda la historia."""
+    with pytest.raises(ValueError):
+        resumen_del_ciclo([("a", "{}")] * 30, ventana=0)

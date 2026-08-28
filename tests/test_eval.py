@@ -495,3 +495,20 @@ def test_muestreo_es_reproducible():
     assert [t["_origen"] for t in muestrear(trazas, 12)] == [
         t["_origen"] for t in muestrear(trazas, 12)
     ]
+
+
+def test_kappa_falla_si_ningun_anotador_vario():
+    """Dos anotadores que ponen siempre la misma nota coinciden POR azar.
+
+    El estadístico es 0/0 ahí. Devolver 1,0 afirmaría acuerdo perfecto por
+    encima del azar donde no hay nada por encima del azar, y devolver 0,0
+    disfrazaría de medición un caso sin información.
+    """
+    with pytest.raises(ValueError, match="indefinido"):
+        kappa_ponderado([3] * 10, [3] * 10)
+
+
+def test_kappa_no_falla_si_alguno_vario():
+    """El caso degenerado es estrecho: alcanza con que uno de los dos varíe."""
+    assert kappa_ponderado([3] * 10, [1, 2, 3, 4, 5] * 2) == pytest.approx(0.0)
+    assert kappa_ponderado([3] * 10, [5] * 10) == pytest.approx(0.0)

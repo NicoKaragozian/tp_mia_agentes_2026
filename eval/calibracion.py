@@ -133,7 +133,21 @@ def kappa_ponderado(a: list[int], b: list[int], k: int = 5) -> float:
 
     num = sum(peso[i][j] * obs[i][j] for i in range(k) for j in range(k))
     den = sum(peso[i][j] * fa[i] * fb[j] / n for i in range(k) for j in range(k))
-    return 1.0 - num / den if den else 0.0
+
+    # `den` es el desacuerdo esperado por azar, y se anula en un único caso:
+    # los dos anotadores usaron siempre la misma categoría, la misma. Ahí el
+    # kappa es 0/0 y no está definido. Devolver 1,0 sería afirmar acuerdo
+    # perfecto por encima del azar cuando quien puntúa siempre igual coincide
+    # con otro igual POR azar, con probabilidad 1; devolver 0,0 disfraza de
+    # medición algo que no lo es. Si las tres planillas tienen la misma nota en
+    # las cuarenta trazas, el dato a reportar es que el etiquetado no sirve.
+    if den == 0:
+        raise ValueError(
+            "kappa indefinido: los dos anotadores usaron una única categoría, "
+            "la misma, en todas las trazas. No hay acuerdo por encima del azar "
+            "que medir; hace falta un etiquetado con variación."
+        )
+    return 1.0 - num / den
 
 
 def spearman(a: list[float], b: list[float]) -> float:
@@ -189,7 +203,12 @@ def acuerdo() -> None:
                 j.append(claves[ident]["juez"][d])
         if not h:
             continue
-        k = kappa_ponderado(h, j)
+        try:
+            k = kappa_ponderado(h, j)
+        except ValueError as exc:
+            # Una dimensión degenerada no puede tumbar el reporte de las otras.
+            print(f"{d:24s} {len(h):4d} {'—':>7s} {'—':>9s}  {exc}")
+            continue
         print(f"{d:24s} {len(h):4d} {k:7.3f} {spearman(h, j):9.3f}  {_lectura(k)}")
 
 

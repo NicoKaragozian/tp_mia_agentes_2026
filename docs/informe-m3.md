@@ -275,7 +275,7 @@ fallaba después de catorce.
 El punto que vale la pena subrayar no es la corrección en sí, sino que
 la suite entera con el cliente simulado había pasado, antes y después, sin
 detectar el problema (doscientos diez tests en ese momento, doscientos noventa
-y dos en la entrega final), porque ese cliente nunca se equivoca de nombre de
+y cinco en la entrega final), porque ese cliente nunca se equivoca de nombre de
 argumento. Solo un modelo real produce ese tipo de error, y por eso una
 evaluación de agentes que se apoya únicamente en mocks tiene un punto ciego
 estructural.

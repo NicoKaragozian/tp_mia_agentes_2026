@@ -54,6 +54,11 @@ def resumen_del_ciclo(acciones: list[Accion], ventana: int = VENTANA_CICLO) -> s
     genérico ("estás en un bucle") le deja el trabajo de descubrir cuál; uno
     concreto le ahorra ese paso.
     """
+    # Sin esta validación, `ventana=0` haría `acciones[-0:]`, que en Python es
+    # la lista ENTERA y no la lista vacía. El resumen pasaría a describir toda
+    # la historia en lugar de la ventana reciente, en silencio.
+    if ventana <= 0:
+        raise ValueError("la ventana tiene que ser positiva")
     conteo = Counter(acciones[-ventana:])
     repetidas = [(a, n) for a, n in conteo.most_common() if n > 1]
     if not repetidas:
