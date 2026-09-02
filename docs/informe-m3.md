@@ -27,9 +27,9 @@ el resultado, dos lo empeoraron y cinco no lo movieron. La que funcionó fue
 replantear: **75,7 % → 84,3 %, p = 0,0105**, con 300 corridas por rama y la
 ampliación registrada de antemano.
 
-Que reflexionar sobre los propios errores ayude no es nuevo, es el resultado
-central de Reflexion. Lo que este trabajo agrega es más específico: **el
-disparador importa más que la intervención**. E5 probó exactamente la misma idea
+Que reflexionar sobre los propios errores ayude no es nuevo: es el resultado
+central de Reflexion (Shinn et al., 2023). Lo que este trabajo agrega es más
+específico, **el disparador importa más que la intervención**. E5 probó exactamente la misma idea
 con el disparador ingenuo —frenar al agente apenas repite una acción— y
 **empeoró** el resultado, de 80 % a 70 %. Medir las trazas mostró por qué: el
 78 % de las corridas repite alguna acción, la primera repetición cae en el paso 3
@@ -110,10 +110,10 @@ herramienta invocada, state es el historial acumulado en la conversación, decid
 es la llamada al modelo con ese historial y los esquemas de herramientas
 disponibles, y act es la ejecución real de la herramienta elegida, que nunca
 corre dentro del modelo sino en el runtime que lo rodea. El framework no
-implementa una etapa explícita de reflect, lo cual es consistente con lo visto
-en clase, ReAct en su forma original tampoco la incluye, esa etapa aparece
-recién en arquitecturas posteriores como Reflexion. El experimento E7 agrega esa
-etapa y mide qué aporta sobre este mundo.
+implementa una etapa explícita de reflect, y eso es consistente con lo visto en
+clase: ReAct en su forma original tampoco la incluye. Esa etapa aparece recién
+en arquitecturas posteriores como Reflexion, y el experimento E7 la agrega para
+medir qué aporta sobre este mundo.
 
 Esta forma de operar encaja con el problema de M3 de un modo particular. Una
 sala de escape es un entorno parcialmente observable, el agente no tiene acceso
