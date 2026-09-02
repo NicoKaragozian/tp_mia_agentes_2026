@@ -21,30 +21,29 @@ confianza al 95 % de 65 a 78)**. Sobre los cinco escenarios obligatorios hasta
 dificultad hard, **118 de 150 (78,7 %, de 71 a 84)**. Ningún escenario alcanza
 el 100 %: medido como pass^k, ninguno es perfectamente confiable.
 
-**Hallazgo principal.** La elección del modelo domina sobre toda decisión de
-diseño del framework. Cambiar de llama3.1 8B a Nova Lite, **sin tocar una sola
-línea de código**, movió la tasa de éxito de 25 % a 70 % sobre las condiciones
-comparables: un salto de 45 puntos que ninguna intervención de framework se
-acerca a igualar.
+**Hallazgo principal.** De ocho intervenciones sobre el framework, una mejoró
+el resultado, dos lo empeoraron y cinco no lo movieron. La que funcionó fue
+**E7**, que interrumpe al agente cuando entra en un ciclo improductivo y le pide
+replantear: **75,7 % → 84,3 %, p = 0,0105**, con 300 corridas por rama y la
+ampliación registrada de antemano.
 
-**El framework no está agotado, pero hay que medir dónde intervenir.** De ocho
-intervenciones probadas, una mejoró el resultado, dos lo empeoraron y cinco no
-lo movieron. La que funcionó fue **E7**, que interrumpe al agente cuando entra
-en un ciclo improductivo y le pide replantear: **75,7 % → 84,3 %, p = 0,0105**,
-con 300 corridas por rama y la ampliación registrada de antemano.
-
-Lo relevante es cómo se llegó. **E5 había probado la misma idea y empeoró el
-resultado**, de 80 % a 70 %. La diferencia no está en la idea sino en el
-disparador: E5 frenaba al agente apenas repetía una acción, y medir las trazas
-mostró que repetir es lo que hacen también las corridas sanas —el 78 % repite
-alguna acción, y el 65 % de las que empiezan a repetir igual llegan a la meta—.
-Recalibrado el disparador contra 180 trazas ya guardadas, la misma idea
-funciona. El experimento que sirvió es el que se diseñó con datos.
+Que reflexionar sobre los propios errores ayude no es nuevo: es el resultado
+central de Reflexion (Shinn et al., 2023). Lo que este trabajo agrega es más
+específico, **el disparador importa más que la intervención**. E5 probó exactamente la misma idea
+con el disparador ingenuo —frenar al agente apenas repite una acción— y
+**empeoró** el resultado, de 80 % a 70 %. Medir las trazas mostró por qué: el
+78 % de las corridas repite alguna acción, la primera repetición cae en el paso 3
+tanto en las que terminan bien como en las que terminan mal, y el 65 % de las que
+empiezan a repetir igual llegan a la meta. El disparador ingenuo castigaba
+corridas sanas. Recalibrado contra 180 trazas ya guardadas, la misma idea pasa de
+dañina a beneficiosa.
 
 **Corolario metodológico.** Las conclusiones de un experimento de ablación no
-transfieren entre modelos. E1 y E2 se corrieron completos sobre las dos
-campañas y dieron resultados distintos, en un caso directamente opuestos: la
-intervención que ayudaba a llama3.1 es la que perjudica a Nova Lite.
+transfieren entre modelos. E1 y E2 se corrieron completos sobre una campaña
+previa con llama3.1 8B y sobre la de Nova Lite, y dieron resultados opuestos: la
+intervención que ayudaba a un modelo perjudica al otro. La causa es que los dos
+fallan por motivos distintos, así que una intervención dirigida a un modo de
+fallo es irrelevante para el otro.
 
 **Modo de fallo.** Con Nova Lite desaparecen por completo los fallos de
 disciplina de tool calling que dominaban con el modelo chico. Los cincuenta
@@ -78,7 +77,7 @@ de AWS y no por decisión de diseño.
   - [3.1. Por qué se mide con repeticiones y no con una corrida](#31-por-qué-se-mide-con-repeticiones-y-no-con-una-corrida)
   - [3.2. Metodología de medición](#32-metodología-de-medición)
   - [3.3. Tasa de éxito por escenario](#33-tasa-de-éxito-por-escenario)
-  - [3.4. El modelo domina sobre las decisiones de framework](#34-el-modelo-domina-sobre-las-decisiones-de-framework)
+  - [3.4. Las conclusiones de ablación no transfieren entre modelos](#34-las-conclusiones-de-ablación-no-transfieren-entre-modelos)
   - [3.5. Eficiencia](#35-eficiencia)
   - [3.6. Dimensiones de conducta según el juez](#36-dimensiones-de-conducta-según-el-juez)
   - [3.7. Capacidad contra confiabilidad: pass@k y pass^k](#37-capacidad-contra-confiabilidad-passk-y-passk)
@@ -111,9 +110,10 @@ herramienta invocada, state es el historial acumulado en la conversación, decid
 es la llamada al modelo con ese historial y los esquemas de herramientas
 disponibles, y act es la ejecución real de la herramienta elegida, que nunca
 corre dentro del modelo sino en el runtime que lo rodea. El framework no
-implementa una etapa explícita de reflect, lo cual es consistente con lo visto
-en clase, ReAct en su forma original tampoco la incluye, esa etapa aparece
-recién en arquitecturas posteriores.
+implementa una etapa explícita de reflect, y eso es consistente con lo visto en
+clase: ReAct en su forma original tampoco la incluye. Esa etapa aparece recién
+en arquitecturas posteriores como Reflexion, y el experimento E7 la agrega para
+medir qué aporta sobre este mundo.
 
 Esta forma de operar encaja con el problema de M3 de un modo particular. Una
 sala de escape es un entorno parcialmente observable, el agente no tiene acceso
@@ -549,16 +549,14 @@ salas, vault combination con 10 % y backtracking vault con 20 %. Ambos exigen
 combinar objetos hallados en salas distintas y volver sobre los pasos, y ambos
 fallan exclusivamente por bucle, agotando el presupuesto de cien iteraciones con 98 y 86 pasos medios respectivamente.
 
-### 3.4. El modelo domina sobre las decisiones de framework
+### 3.4. Las conclusiones de ablación no transfieren entre modelos
 
-Además de la campaña Nova Lite de la sección anterior, se corrió antes una
-campaña independiente con la misma configuración del agente sobre llama3.1 de 8B
-de parámetros ejecutado en local con Ollama.
+Antes de la campaña con Nova Lite se corrió otra sobre llama3.1 de 8B en local,
+con la misma configuración del agente. Que el modelo grande resuelva más no es un
+hallazgo. Lo que sí lo es: **los dos modelos fallan por motivos distintos**, y de
+ahí se sigue que un resultado de ablación no transfiere de uno al otro.
 
-Para que la comparación sea entre iguales, todo lo que sigue se calcula sobre la
-**misma población en ambas campañas**: el brazo baseline de los experimentos E1
-y E2, que es la única configuración que se corrió completa con los dos modelos.
-Son 32 corridas con llama3.1 y 100 con Nova Lite.
+Sobre la única población comparable, el brazo baseline de E1 y E2:
 
 | | llama3.1 8B | Nova Lite |
 | :---- | ----: | ----: |
@@ -567,38 +565,23 @@ Son 32 corridas con llama3.1 y 100 con Nova Lite.
 | Llamada escrita como texto | 33 % | 0 % |
 | Otros modos combinados | 21 % | 0 % |
 
-El cambio de modelo, por sí solo, movió la tasa de éxito de 25 % a 70 % sin
-modificar una sola línea del framework. Es un efecto mayor que el de todas las
-intervenciones de framework de la sección siguiente juntas: la única que resultó
-positiva, E7, aporta 8,7 puntos contra los 45 del cambio de modelo. (La campaña
-completa de Nova Lite, con la configuración final y los ocho escenarios, llega
-al 72 % que reporta la sección 3.3; el 70 % de esta tabla corresponde solo a las
-condiciones que admiten comparación directa con llama3.1.)
+Con llama3.1 dominan los fallos de disciplina de tool calling, que el prompt
+especializado corrige; con Nova Lite esos desaparecen y queda solo el bucle, que
+el prompt no toca. Por eso E2 mide un efecto decisivo en una campaña y
+exactamente nulo en la otra, y E1 invierte su mecanismo: con el modelo débil,
+recortar la memoria hace colapsar al agente antes de que alcance a repetirse;
+con el capaz, lo hace repetirse más. El detalle está en la sección 4.
 
-Con Nova Lite desaparecen por completo los modos de fallo asociados a una
-disciplina débil de tool calling, y el único modo que persiste es el bucle, la
-ausencia de una condición de parada por deadlock que la materia lista entre las
-cinco canónicas. Sobre la campaña completa de Nova Lite, que incluye los
-escenarios extreme, los cincuenta fracasos se clasifican como bucle sin una
-sola excepción.
+La consecuencia es transferible más allá de este trabajo: **un resultado de
+ablación es válido para el modelo sobre el que se midió**, y verificar que el
+modo de fallo dominante sigue siendo el mismo es condición previa para
+extrapolarlo.
 
-Una versión anterior de este análisis atribuía un 3 % de los fracasos a desborde
-de contexto, y vale la pena explicar por qué se corrigió. El umbral de desborde
-del clasificador estaba fijo en 16.384 tokens, que es el `num_ctx` que el
-framework le pasa a Ollama, y se aplicaba por igual a las corridas de Bedrock.
-Nova Lite admite 300.000 tokens de entrada, de modo que un prompt de dieciséis
-mil no lo acerca ni remotamente a su límite: esas corridas no desbordaban nada,
-se las estaba midiendo contra el techo de otro proveedor. El umbral ahora
-depende del modelo que produjo la traza y ninguna corrida de Nova lo alcanza. El
-error era una instancia de la tesis de esta misma sección, una propiedad del
-modelo escrita en el código como si fuera una constante del problema.
-
-El cambio de modelo no solo mueve el número agregado, cambia qué conclusiones se
-obtienen de los experimentos. Los experimentos E1 y E2 se corrieron completos
-sobre ambas campañas y arrojan resultados distintos en cada una, en un caso
-opuestos. Esa es la advertencia metodológica más importante de este trabajo, y se
-desarrolla en la sección 4: **las conclusiones de un experimento de ablación
-sobre un agente no transfieren automáticamente entre modelos.**
+Un tropiezo propio ilustra el punto. Una versión anterior de este análisis
+atribuía un 3 % de los fracasos de Nova a desborde de contexto; era un artefacto
+del clasificador, que comparaba contra los 16.384 tokens que el framework le pasa
+a Ollama cuando Nova Lite admite 300.000. Habíamos escrito una propiedad del
+modelo como si fuera una constante del problema.
 
 ### 3.5. Eficiencia
 
@@ -812,9 +795,6 @@ exitosas en cada condición. Es decir que el prompt especializado no mejora ni e
 resultado ni el camino: con un modelo de esta capacidad, la especialización del
 prompt no aporta nada por sobre el prompt por defecto del framework.
 
-Junto con E1, este es el segundo experimento que muestra que una intervención de
-framework con efecto grande y bien medido sobre un modelo puede tener efecto nulo
-sobre otro.
 
 ### E3. Memoria episódica de acciones ejecutadas
 
@@ -1018,6 +998,24 @@ Este corte es post hoc y no estaba registrado de antemano, a diferencia del
 contraste principal, así que vale como explicación del mecanismo y no como
 evidencia independiente.
 
+**Relación con el trabajo previo.** Que un agente mejore cuando se lo hace
+reflexionar sobre sus propios errores no es un hallazgo nuevo: es el resultado
+central de Reflexion (Shinn et al., 2023), que agrega una etapa de
+autoevaluación verbal sobre el bucle de ReAct (Yao et al., 2022), el mismo bucle
+que este framework implementa y que la sección 0 describe sin etapa de
+`reflect`. En ese sentido E7 reproduce un resultado conocido, y conviene decirlo.
+
+Lo que este trabajo agrega es una dimensión que esa literatura no separa: **el
+momento del disparo**. Reflexion reflexiona ante el fracaso de un episodio, con
+la señal de la tarea ya disponible; acá la reflexión ocurre a mitad de corrida y
+alguien tiene que decidir cuándo. E5 y E7 son el experimento controlado de esa
+decisión —misma intervención, mismo modelo, mismo escenario, distinto
+disparador— y el resultado es que la elección del disparador no es un detalle de
+implementación sino la diferencia entre perder diez puntos y ganar casi nueve.
+Un disparador plausible a primera vista, "si repite, frenalo", resulta
+activamente dañino, y solo se descubre midiendo con qué frecuencia repiten
+también las corridas que terminan bien.
+
 Vale la pena subrayar de dónde salió. E5 y E7 prueban la misma hipótesis de
 fondo —que interrumpir el ciclo ayuda— y llegan a conclusiones opuestas. Lo
 único que cambió entre uno y otro es cuándo se dispara la interrupción, y ese
@@ -1079,39 +1077,42 @@ por el motivo que se había escrito.
 | E8, temperatura del modelo | Nulo en 0,2, 0,5 y 0,9 |
 | E9, herramientas distractoras | Nulo, y refuta un comentario del propio código |
 
-Tres lecturas salen de la tabla, y ninguna de las tres se ve mirando un
-experimento por separado.
+Tres lecturas salen de la tabla, y ninguna se ve mirando un experimento por
+separado.
 
-**Primera: el modelo domina, pero no agota el problema.** Cambiar de modelo movió
-45 puntos y ninguna intervención de framework se le acerca. Durante buena parte
-del trabajo eso pareció ser toda la historia, porque seis experimentos seguidos
-dieron nulo o negativo. E7 muestra que la conclusión fuerte —que el framework ya
-no tenía nada que aportar— era prematura: había 8,7 puntos disponibles, y estaban
-donde la instrumentación decía que estaban.
-
-**Segunda: la diferencia entre E5 y E7 es el método, no la idea.** Los dos
-intervienen sobre el mismo modo de fallo con la misma hipótesis de fondo, y dan
-resultados opuestos. E5 eligió su disparador por intuición —"si repite, frenalo"—
-y resultó que repetir es lo que hacen también las corridas sanas. E7 eligió el
-suyo barriendo parámetros contra 180 trazas ya guardadas hasta encontrar uno que
+**Primera: el disparador importa más que la intervención.** E5 y E7 atacan el
+mismo modo de fallo con la misma idea de fondo —interrumpir el ciclo— y dan
+resultados opuestos, −10 y +8,7 puntos. Lo único que cambió es *cuándo* se
+dispara la interrupción. E5 lo eligió por intuición, "si repite, frenalo", y
+resultó que repetir es lo que hacen también las corridas sanas; E7 lo eligió
+barriendo parámetros contra 180 trazas ya guardadas hasta encontrar uno que
 separara. El experimento que funcionó es el que se diseñó con datos, y el dato
 que hizo falta ya estaba grabado desde antes de que existiera la hipótesis. Es la
-justificación más concreta de todo el aparato de instrumentación que ocupa la
-sección 2.
+justificación más concreta de todo el aparato de instrumentación de la sección 2.
 
-**Tercera: el efecto de una intervención depende del modelo sobre el que se
-mide, al punto de poder invertirse.** Es lo que E1 y E2 muestran en conjunto y
-ninguno de los dos por separado. Un informe que hubiera evaluado únicamente con
-llama3.1 habría concluido que el prompt especializado es una pieza crítica del
-sistema y que quitarle memoria al agente reduce sus repeticiones. Las dos
-conclusiones son falsas con el modelo que exige la consigna.
+**Segunda: el efecto de una intervención depende del modelo, al punto de poder
+invertirse.** Es lo que E1 y E2 muestran en conjunto y ninguno por separado. Un
+informe escrito solo con llama3.1 habría concluido que el prompt especializado es
+una pieza crítica del sistema y que quitarle memoria al agente reduce sus
+repeticiones. Las dos conclusiones son falsas con el modelo que exige la
+consigna. La causa está en la sección 3.4: los dos modelos fallan por motivos
+distintos, y una intervención dirigida a un modo de fallo no puede ayudar contra
+otro.
 
-Conviene además dejar registrado el saldo honesto: de las ocho intervenciones de
-framework probadas, **una mejoró el resultado, dos lo empeoraron y cinco no lo
-movieron**. Los nulos no son experimentos fallidos; E8 refutó una hipótesis
-específica que habíamos escrito con confianza, y E9 obligó a corregir una
-afirmación que el código venía haciendo sin respaldo. Un experimento cuya
-hipótesis se cumple confirma lo que ya se creía; uno que la refuta enseña algo.
+**Tercera: el saldo honesto es mayormente negativo, y eso también informa.** De
+ocho intervenciones, una mejoró, dos empeoraron y cinco no movieron nada. Los
+nulos no son experimentos fallidos: E8 refutó una hipótesis que habíamos escrito
+con confianza, y E9 obligó a corregir una afirmación que el código venía haciendo
+sin respaldo. Un experimento cuya hipótesis se cumple confirma lo que ya se creía;
+uno que la refuta enseña algo.
+
+Queda una observación de encuadre. Ninguna intervención de framework se acerca a
+los 45 puntos que aportó cambiar de modelo, lo cual es esperable y poco
+informativo por sí solo: un modelo mayor resuelve más. Lo que sí importa de esa
+comparación no es la magnitud sino la advertencia de la segunda lectura, que es
+transferible a cualquier evaluación de agentes: **un resultado de ablación es
+válido para el modelo sobre el que se midió y hay que volver a medirlo al
+cambiarlo.**
 
 ---
 
